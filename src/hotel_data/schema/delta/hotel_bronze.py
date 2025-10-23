@@ -4,6 +4,7 @@ flattened_hotel_schema = StructType([
     # Top-level hotel fields
     StructField("id", StringType(), True),
     StructField("name", StringType(), True),
+    StructField("normalized_name", StringType(), True),
     StructField("relevanceScore", StringType(), True),
     StructField("providerId", StringType(), True),
     StructField("providerHotelId", StringType(), True),
@@ -13,6 +14,7 @@ flattened_hotel_schema = StructType([
     # GeoCode
     StructField("geoCode_lat", StringType(), True),
     StructField("geoCode_long", StringType(), True),
+    StructField("geohash", ArrayType(StringType()), True),
 
     # Contact → Address
     StructField("contact_address_line1", StringType(), True),

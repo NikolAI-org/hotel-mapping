@@ -102,16 +102,17 @@ manager = DeltaTableManager(
 # manager.write_data("hotels", df)
 
 # Read table
-hotels_df = manager.read_table("hotels")
-hotels_df.show(20)
+# hotels_df = manager.read_table("hotels")
+# hotels_df.select("geohash", "geoCode_lat", "geoCode_long").limit(20).show(truncate=False)
 
 # List CATALOG, SCHEMA, TABLES
-manager.list_catalogs().show(truncate=False)
-manager.list_schemas().show(truncate=False)
-manager.list_tables().show(truncate=False)
+# manager.list_catalogs().show(truncate=False)
+# manager.list_schemas().show(truncate=False)
+# manager.list_tables().show(truncate=False)
 
 # DROP TABLE
-# manager.drop_table("hotels_err", delete_data=True)
+manager.drop_table("hotels_err", delete_data=True)
+manager.drop_table("hotels", delete_data=True)
 
 # Merge new data
 # new_df = spark.read.json("/data/raw/hotels_new/*.json")

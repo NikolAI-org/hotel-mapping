@@ -119,7 +119,18 @@ minio server ~/data
    RootUser: minioadmin 
    RootPass: minioadmin 
 ```
-
+- Install MC tool
+```
+curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
+chmod +x mc
+sudo mv mc /usr/local/bin/
+# Verify the setup
+mc --version
+mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
+mc ls local
+mc admin info local
+mc admin heal local
+```
 
 # Markdown View Command (VS Code)
 ```

@@ -20,6 +20,7 @@ from hotel_data.pipeline.preprocessor.processors.data_processing_pipeline import
 from hotel_data.pipeline.preprocessor.processors.default_value_processor import (
     DefaultValueProcessor,
 )
+from hotel_data.pipeline.preprocessor.processors.geo_hash_processor import GeoHashProcessor
 from hotel_data.pipeline.preprocessor.processors.hotel_data_processor import (
     HotelFlattenerProcessor,
 )
@@ -29,16 +30,13 @@ from hotel_data.pipeline.preprocessor.processors.lowercase_processor import (
 from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor import (
     MandatoryFieldsFilterProcessor,
 )
+from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
 from hotel_data.pipeline.preprocessor.processors.timestamp_processor import (
     TimestampAppenderProcessor,
 )
 from hotel_data.pipeline.preprocessor.utils.hotel_data_flattner import GenericFlattener
 from hotel_data.pipeline.preprocessor.readers.json_reader import JSONReader
 from hotel_data.pipeline.preprocessor.readers.csv_reader import CSVReader
-from hotel_data.pipeline.preprocessor.processors.null_handler import NullHandler
-from hotel_data.pipeline.preprocessor.processors.special_char_cleaner import (
-    SpecialCharCleaner,
-)
 from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
     AddressCombinerProcessor,
 )
@@ -46,7 +44,7 @@ from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStre
 from hotel_data.pipeline.preprocessor.writers.delta_writer import DeltaWriter
 from hotel_data.schema.input.preprocessor_schema import hotel_schema
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
-from datetime import datetime
+from datetime import datetime, time
 
 # processors = [
 #     NullHandler({"starRating": 0, "name": "Unknown"}),
@@ -79,6 +77,12 @@ CRITICAL_FIELDS = [
     "contact_address_country_name",
 ]
 
+NAME_FORMATTER_FIELDS = [
+    "contact_address_city_name",
+    "contact_address_state_name",
+    "contact_address_country_name"
+]
+
 ADDRESS_FIELDS = [
     "contact_address_line1",
     "contact_address_city_name",
@@ -89,7 +93,6 @@ ADDRESS_FIELDS = [
 
 EXCLUDE_LOWERCASE_FIELDS = ["original_message"]
 
-processors = [NullHandler({"hotels_starRating": 0, "hotels_name": "Unknown"})]
 genericFlattner = GenericFlattener(explode_arrays=True)
 
 
@@ -185,17 +188,7 @@ def main():
     )
     hadoopConf.set("fs.s3a.mkdirs.enabled", "true")
     hadoopConf.set("spark.hadoop.fs.s3a.path.style.access", "true")
-
-    # Create a Delta database
-    # spark.sql("CREATE DATABASE IF NOT EXISTS bronze")
-    # spark.sql(
-    #         f"""
-    #         CREATE TABLE IF NOT EXISTS bronze.hotels
-    #         USING DELTA
-    #         LOCATION '{BASE_PATH}/hotels'
-    #         COMMENT ''
-    #     """
-    #     )
+    
     spark.sql("SHOW DATABASES").show()
 
     # 1. Read
@@ -245,7 +238,36 @@ def main():
         print(f"Streaming query failed: {e}")
     finally:
         print("Stopping Spark session gracefully...")
-        spark.stop()
+        stop_spark(spark)
+
+
+def stop_spark_gracefully(spark: SparkSession, wait_seconds: int = 5):
+    """
+    Safely stop Spark session and active streaming queries.
+    Ignores Py4J/JVM disconnect errors.
+    """
+    try:
+        # Stop all active streaming queries
+        for query in spark.streams.active:
+            try:
+                print(f"Stopping streaming query: {query.name}")
+                query.stop()
+            except Exception as e:
+                print(f"Warning: Failed to stop query {query.name}: {e}")
+
+        # Small wait for threads to terminate
+        time.sleep(wait_seconds)
+
+        # Stop Spark session
+        try:
+            print("Stopping Spark session...")
+            spark.stop()
+        except Exception as e:
+            print(f"Warning: Spark stop failed (likely JVM already dead): {e}")
+
+    except Exception as e:
+        # Catch any other unexpected errors
+        print(f"Warning: Error during Spark shutdown: {e}")
 
 
 def debug_s3a_conf(spark):
@@ -276,6 +298,8 @@ def process_batch(batch_df, batch_id, manager: DeltaTableManager):
     lowercase_processor = LowercaseProcessor(EXCLUDE_LOWERCASE_FIELDS)
     timestamp_processor = TimestampAppenderProcessor()
     default_value_processor = DefaultValueProcessor(critical_fields=CRITICAL_FIELDS)
+    name_formatter_processor = NameFormatterProcessor(NAME_FORMATTER_FIELDS)
+    geo_hash_processor = GeoHashProcessor()
 
     # Pipeline step 1: flatten
     flat_df = flatten_processor.process(batch_df)
@@ -290,9 +314,12 @@ def process_batch(batch_df, batch_id, manager: DeltaTableManager):
             lowercase_processor,
             timestamp_processor,
             default_value_processor,
+            name_formatter_processor,
         ]
     )
     valid_df = transformation_pipeline.run(valid_df)
+    valid_df = geo_hash_processor.process(valid_df)
+
     # for row in valid_df.limit(1).collect():
     #     print(json.dumps(row.asDict(recursive=True), indent=2, default=datetime_handler))
 

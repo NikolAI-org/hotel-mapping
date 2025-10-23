@@ -102,14 +102,14 @@ class DeltaTableManager:
             return
         print(f"Writing to path {path}")
         if df is not None and df.columns:
-            df.write.format("delta").mode("overwrite").save(path)
+            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
             print(f"📦 Written initial data to {path}")
         else:
             # Write empty DataFrame with schema to avoid empty schema errors
             df = (
                 df if df is not None else self.spark.createDataFrame([], "id STRING")
             )  # default column
-            df.write.format("delta").mode("overwrite").save(path)
+            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
             print(f"📦 Created empty table at {path}")
 
         self.spark.sql(
@@ -145,7 +145,7 @@ class DeltaTableManager:
         print(
             f"📝 Writing data to '{fq_name}' Path: {path} (mode={mode}, mergeSchema=true)..."
         )
-        df.write.format("delta").mode(mode).option("mergeSchema", "true").save(path)
+        df.write.format("delta").mode(mode).option("mergeSchema", "true").option("overwriteSchema", "true").save(path)
         # df.write.format("delta").mode(mode).option("mergeSchema", "true").saveAsTable(fq_name)
         print(f"✅ Data written to '{fq_name}' successfully.")
 
