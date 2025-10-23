@@ -1,0 +1,105 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: hotels-preprocessor
+  namespace: default
+spec:
+  type: Python
+  mode: cluster
+  image: hotel-preprocess-pipeline:latest
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/src/hotel_data/pipeline/preprocessor/preprocessing_pipeline.py
+  sparkVersion: "4.0.1"
+  restartPolicy:
+    type: Never
+
+  # Driver configuration
+  driver:
+    cores: 1
+    memory: 1g
+    serviceAccount: spark
+    labels:
+      version: 4.0.1
+    env:
+      # Use secretKeyRef to pull AWS_ACCESS_KEY_ID from 'seaweed-s3-credentials' Secret
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: seaweed-s3-credentials
+            key: accesskey
+      # Use secretKeyRef to pull AWS_SECRET_ACCESS_KEY from 'seaweed-s3-credentials' Secret
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: seaweed-s3-credentials
+            key: secretkey
+    volumeMounts:
+      - name: logs-volume
+        mountPath: /app/logs
+
+  # Executor configuration
+  executor:
+    cores: 1
+    instances: 2
+    memory: 1g
+    labels:
+      version: 4.0.1
+    env:
+      # Use secretKeyRef to pull AWS_ACCESS_KEY_ID from 'seaweed-s3-credentials' Secret
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: seaweed-s3-credentials
+            key: accesskey
+      # Use secretKeyRef to pull AWS_SECRET_ACCESS_KEY from 'seaweed-s3-credentials' Secret
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: seaweed-s3-credentials
+            key: secretkey
+    volumeMounts:
+      - name: logs-volume
+        mountPath: /app/logs
+
+  # Spark configuration
+  sparkConf:
+    "spark.executorEnv.PYTHONPATH": "/app/src"
+    "spark.driverEnv.PYTHONPATH": "/app/src"
+    # SeaweedFS/S3 settings: Configure Spark to use the EnvironmentVariableCredentialsProvider
+    "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
+    # "spark.hadoop.fs.s3a.aws.credentials.provider": "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider,org.apache.hadoop.fs.s3a.auth.AssumedRoleCredentialProvider,com.amazonaws.auth.EnvironmentVariableCredentialsProvider"
+    # Remove hardcoded access/secret keys from sparkConf
+    "spark.hadoop.fs.s3a.access.key": "admin"
+    "spark.hadoop.fs.s3a.secret.key": "password"
+    # 3. Use 's3a.access.key' and 's3a.secret.key' but pass them via the Driver/Executor Env! 
+    # To fix the S3A/Spark config precedence issue, we must tell Spark to forward the ENV variables
+    # into the Hadoop configuration for the driver/executors.
+    # "spark.driverEnv.AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}"
+    # "spark.driverEnv.AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}"
+    # "spark.executorEnv.AWS_ACCESS_KEY_ID": "${AWS_ACCESS_KEY_ID}"
+    # "spark.executorEnv.AWS_SECRET_ACCESS_KEY": "${AWS_SECRET_ACCESS_KEY}"
+    # "spark.hadoop.fs.s3a.connection.timeout": "60000"
+    # "spark.hadoop.fs.s3a.connection.request.timeout": "60000"
+    # "spark.hadoop.fs.s3a.connection.establish.timeout": "30000"
+    # "spark.hadoop.fs.s3a.attempts.maximum": "3"
+    # "spark.hadoop.fs.s3a.threads.keepalivetime": "60000"
+    # "fs.s3a.threads.keepalivetime": "60000"
+    # "spark.hadoop.fs.s3a.log.events": "true"
+
+    # 4. Optional: If the provider chain still fails, you may need to force the use of the environment variables in the config directly:
+    # "spark.hadoop.fs.s3a.access.key": "${AWS_ACCESS_KEY_ID}"
+    # "spark.hadoop.fs.s3a.secret.key": "${AWS_SECRET_ACCESS_KEY}"
+
+    # --- CRITICAL FIX: Update S3A Endpoint ---
+    # Use the fully qualified Kubernetes Service DNS name, including the port.
+    # "spark.hadoop.fs.s3a.endpoint": "http://seaweedfs-s3.delta-store.svc.cluster.local:8333"
+    # "spark.hadoop.fs.s3a.endpoint": "http://seaweed-s3.local"
+    "spark.hadoop.fs.s3a.endpoint": "http://192.168.1.4:9000"
+
+    # "spark.hadoop.fs.s3a.path.style.access": "true"
+    # "spark.hadoop.fs.s3a.connection.ssl.enabled": "false"
+
+  # Volumes (PersistentVolumeClaim or emptyDir)
+  volumes:
+    - name: logs-volume
+      emptyDir: {}
