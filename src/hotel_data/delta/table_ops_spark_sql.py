@@ -1,4 +1,6 @@
 from pyspark.sql import SparkSession
+
+from hotel_data.config.paths import WAREHOUSE_DIR
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 # spark = SparkSession.builder \
@@ -8,9 +10,6 @@ from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 #     .config("spark.sql.warehouse.dir", "/data/delta") \
 #     .enableHiveSupport() \
 #     .getOrCreate()
-    
-WAREHOUSE_DIR = "s3a://delta-bucket/warehouse"
-BASE_PATH = "s3a://delta-bucket/hotel_data/delta"
 
 spark = (
     SparkSession.builder.appName("HotelsPipeline")
@@ -51,8 +50,6 @@ spark = (
     .enableHiveSupport()
     .getOrCreate()
 )
-
-
 
 # List all catalogs
 # spark.sql("SHOW CATALOGS").show(truncate=False)

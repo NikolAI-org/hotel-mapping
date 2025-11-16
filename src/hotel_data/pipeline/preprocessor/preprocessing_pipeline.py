@@ -1,19 +1,15 @@
-import json
 import traceback
-from pyspark.sql import functions as F
-from pyspark.sql import SparkSession
-from pyspark.sql import DataFrame
+from datetime import datetime, time
+
 from py4j.protocol import Py4JNetworkError, Py4JError
-from pyspark.sql.functions import (
-    col,
-    concat_ws,
-    lower,
-    regexp_replace,
-    current_timestamp,
-    lit,
-)
+from pyspark.sql import SparkSession
+
+from hotel_data.config.paths import INPUT_FILE_PATH, CATALOG_NAME, SCHEMA_NAME, BASE_DELTA_PATH, TABLE_HOTELS, \
+    TABLE_HOTELS_FAILED, TABLE_HOTELS_NAME, TABLE_HOTELS_FAILED_NAME
 from hotel_data.delta.delta_table_manager import DeltaTableManager
-from hotel_data.pipeline.preprocessor.flatten_data import DataFrameFlattener
+from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
+    AddressCombinerProcessor,
+)
 from hotel_data.pipeline.preprocessor.processors.data_processing_pipeline import (
     DataProcessingPipeline,
 )
@@ -34,17 +30,10 @@ from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import
 from hotel_data.pipeline.preprocessor.processors.timestamp_processor import (
     TimestampAppenderProcessor,
 )
-from hotel_data.pipeline.preprocessor.utils.hotel_data_flattner import GenericFlattener
-from hotel_data.pipeline.preprocessor.readers.json_reader import JSONReader
-from hotel_data.pipeline.preprocessor.readers.csv_reader import CSVReader
-from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
-    AddressCombinerProcessor,
-)
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
-from hotel_data.pipeline.preprocessor.writers.delta_writer import DeltaWriter
-from hotel_data.schema.input.preprocessor_schema import hotel_schema
+from hotel_data.pipeline.preprocessor.utils.hotel_data_flattner import GenericFlattener
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
-from datetime import datetime, time
+from hotel_data.schema.input.preprocessor_schema import hotel_schema
 
 # processors = [
 #     NullHandler({"starRating": 0, "name": "Unknown"}),
@@ -52,20 +41,9 @@ from datetime import datetime, time
 #     AddressFormatter(["line1", "city", "state", "postalCode"]),
 # ]
 
-# WAREHOUSE_DIR = "/home/akshay/workspace/python_workspace/hotel_data/data/delta"
-WAREHOUSE_DIR = "s3a://warehouse"
-
-SUCCESS_TABLE_NAME = "hotels"
-FAILURE_TABLE_NAME = "hotels_err"
-CATALOG_NAME = "spark_catalog"
-SCHEMA_NAME = "bronze"
 # BASE_PATH="/home/akshay/workspace/python_workspace/hotel_data/data/delta"
-BASE_PATH = "s3a://delta-bucket/hotel_data/delta"
 SUCCESS_COMMENT = "Raw data ingested for valid hotel input"
 FAILURE_COMMENT = "Raw data ingested for invalid hotel input"
-
-# INPUT_FILE_PATH = "/home/akshay/Documents/hotel_data/data"
-INPUT_FILE_PATH = "s3a://input-files"
 
 CRITICAL_FIELDS = [
     "geoCode_lat",
@@ -202,19 +180,19 @@ def main():
         spark=spark,
         catalog_name=CATALOG_NAME,
         schema_name=SCHEMA_NAME,
-        base_path=BASE_PATH,
+        base_path=BASE_DELTA_PATH,
     )
 
     create_table(
         manager=manager,
         spark=spark,
-        tableName=SUCCESS_TABLE_NAME,
+        tableName=TABLE_HOTELS_NAME,
         comment=SUCCESS_COMMENT,
     )
     create_table(
         manager=manager,
         spark=spark,
-        tableName=FAILURE_TABLE_NAME,
+        tableName=TABLE_HOTELS_FAILED_NAME,
         comment=FAILURE_COMMENT,
     )
 
@@ -238,7 +216,7 @@ def main():
         print(f"Streaming query failed: {e}")
     finally:
         print("Stopping Spark session gracefully...")
-        stop_spark(spark)
+        stop_spark_gracefully(spark)
 
 
 def stop_spark_gracefully(spark: SparkSession, wait_seconds: int = 5):
@@ -324,8 +302,8 @@ def process_batch(batch_df, batch_id, manager: DeltaTableManager):
     #     print(json.dumps(row.asDict(recursive=True), indent=2, default=datetime_handler))
 
     # Pipeline step 4: write results
-    safe_write_table(manager, SUCCESS_TABLE_NAME, valid_df)
-    safe_write_table(manager, FAILURE_TABLE_NAME, invalid_df)
+    safe_write_table(manager, TABLE_HOTELS_NAME, valid_df)
+    safe_write_table(manager, TABLE_HOTELS_FAILED_NAME, invalid_df)
 
     print(f"✅ Written valid records for batch {batch_id}, Invalid: {valid_df.count()}")
 

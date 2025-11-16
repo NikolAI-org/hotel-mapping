@@ -1,4 +1,6 @@
 from pyspark.sql import SparkSession
+
+from hotel_data.config.paths import BASE_DELTA_PATH
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 
@@ -9,8 +11,6 @@ from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 #     .config("spark.sql.warehouse.dir", "/data/delta") \
 #     .enableHiveSupport() \
 #     .getOrCreate()
-WAREHOUSE_DIR = "s3a://warehouse"
-BASE_PATH = "s3a://delta-bucket/hotel_data/delta"
 
 spark = (
         SparkSession.builder.appName("HotelsPipeline")
@@ -87,7 +87,7 @@ manager = DeltaTableManager(
     spark=spark,
     catalog_name="spark_catalog",
     schema_name="bronze",
-    base_path=BASE_PATH,
+    base_path=BASE_DELTA_PATH,
 )
 
 # Read and flatten JSON

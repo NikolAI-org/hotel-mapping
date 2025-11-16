@@ -1,0 +1,18 @@
+# hotel_pairs_schema.py
+from pyspark.sql.types import *
+
+hotel_pairs_schema = StructType([
+    StructField("id_i", StringType(), False),
+    StructField("id_j", StringType(), False),
+    StructField("providerHotelId_i", StringType(), False),
+    StructField("providerHotelId_j", StringType(), False),
+    StructField("name_i", StringType(), False),
+    StructField("name_j", StringType(), False),
+    # StructField("geoCode_lat_i", DoubleType(), True),
+    # StructField("geoCode_long_i", DoubleType(), True),
+    # StructField("geoCode_lat_j", DoubleType(), True),
+    # StructField("geoCode_long_j", DoubleType(), True),
+    StructField("geo_distance_km", DoubleType(), False),
+    StructField("name_score", FloatType(), False),
+StructField("star_ratings_score", FloatType(), False)
+])

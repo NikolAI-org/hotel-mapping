@@ -131,7 +131,7 @@ class DeltaTableManager:
         print(f"------- Rows: {df.count()}")
         return df
 
-    def write_table(self, table_name: str, df: DataFrame, mode: str = "append"):
+    def write_table(self, table_name: str, df: DataFrame, mode: str = "append", merge_schema: str = "true", overwrite_schema: str = "true"):
         """
         Write data into Delta table.
         Supports append/overwrite with schema evolution.
@@ -143,9 +143,9 @@ class DeltaTableManager:
             self.create_table(table_name, df=df)
 
         print(
-            f"📝 Writing data to '{fq_name}' Path: {path} (mode={mode}, mergeSchema=true)..."
+            f"📝 Writing data to '{fq_name}' Path: {path} (mode={mode}, mergeSchema={merge_schema}, overwriteSchema={overwrite_schema})..."
         )
-        df.write.format("delta").mode(mode).option("mergeSchema", "true").option("overwriteSchema", "true").save(path)
+        df.write.format("delta").mode(mode).option("mergeSchema", merge_schema).option("overwriteSchema", overwrite_schema).save(path)
         # df.write.format("delta").mode(mode).option("mergeSchema", "true").saveAsTable(fq_name)
         print(f"✅ Data written to '{fq_name}' successfully.")
 

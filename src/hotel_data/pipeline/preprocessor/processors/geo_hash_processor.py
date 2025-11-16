@@ -4,6 +4,7 @@ from pyspark.sql.functions import col, udf, struct
 from pyspark.sql.types import ArrayType, StringType, DoubleType,StructType
 import h3
 from typing import List
+import math
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
@@ -77,13 +78,34 @@ class GeoHashProcessor(BaseProcessor):
         if lat is None or lon is None:
             return []
 
+        # --- 1. Convert 100 meters into degrees ---
+        buffer_meters = 100
+        lat_deg_buffer = buffer_meters / 111320.0
+        lon_deg_buffer = buffer_meters / (111320.0 * math.cos(math.radians(lat)))
+
+        # --- 2. Generate multiple sample points on circle boundary ---
+        num_samples = 16  # more samples = more accurate, slower
+        points = []
+        for i in range(num_samples):
+            angle = 2 * math.pi * i / num_samples
+            lat_offset = lat_deg_buffer * math.cos(angle)
+            lon_offset = lon_deg_buffer * math.sin(angle)
+            points.append((lat + lat_offset, lon + lon_offset))
+
+        # --- 3. Convert each sample point to H3 cell ---
+        cells = set()
+        for (p_lat, p_lon) in points:
+            cell = h3.latlng_to_cell(p_lat, p_lon, resolution)
+            cells.add(cell)
+
+        # --- 4. Also include the center cell ---
         # 1. Get the central H3 cell index (the 'geohash')
         center_h3 = h3.latlng_to_cell(lat, lon, resolution)
 
         # 2. Get the cell itself and its neighbors (k-ring)
         neighbor_cells = h3.grid_disk(center_h3, k=k_distance)
-        
-        # Convert the set of cells to a list of hexadecimal strings
-        return list(neighbor_cells)
 
-    
+        cells.update(neighbor_cells)
+
+        # Convert the set of cells to a list of hexadecimal strings
+        return list(cells)
