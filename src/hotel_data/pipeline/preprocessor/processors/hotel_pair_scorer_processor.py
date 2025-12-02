@@ -1,12 +1,28 @@
 # hotel_pair_scorer_processor.py
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+from sympy.physics.quantum.gate import normalized
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
+from pyspark.sql import functions as F
+
+
+
+def get_cosine_similarity_expr(col_a, col_b):
+    """
+    Returns a Native Spark SQL expression for Cosine Similarity.
+    Assumes vectors are already normalized (magnitude = 1).
+    Formula: dot_product(A, B)
+    """
+    return F.aggregate(
+        F.zip_with(col_a, col_b, lambda x, y: x * y), # Multiply elements
+        F.lit(0.0),                                   # Initial accumulator
+        lambda acc, x: acc + x                        # Sum them up
+    )
 
 class HotelPairScorerProcessor(BaseProcessor):
     """
@@ -19,6 +35,8 @@ class HotelPairScorerProcessor(BaseProcessor):
         self.geohash_col = geohash_col
 
     def process(self, df: DataFrame) -> DataFrame:
+        df = df.withColumn("unique_key",
+                                       F.concat(F.col("providerId"), F.lit("_"), F.col("providerHotelId")))
         a = df.alias("a")
         b = df.alias("b")
 
@@ -31,7 +49,7 @@ class HotelPairScorerProcessor(BaseProcessor):
                                       F.col(f"b.{self.geohash_col}"))
                 ) > 0
             )
-            .filter(F.col("a.id") < F.col("b.id"))  # avoid self-join and reverse duplicates
+            .filter(F.col("a.unique_key") < F.col("b.unique_key"))  # avoid self-join and reverse duplicates
             .select(
                 F.col("a.id").alias("id_i"),
                 F.col("b.id").alias("id_j"),
@@ -39,6 +57,12 @@ class HotelPairScorerProcessor(BaseProcessor):
                 F.col(f"b.providerHotelId").alias("providerHotelId_j"),
                 F.col(f"a.name").alias("name_i"),
                 F.col(f"b.name").alias("name_j"),
+                F.col(f"a.normalized_name").alias("normalized_name_i"),
+                F.col(f"b.normalized_name").alias("normalized_name_j"),
+                F.col(f"a.name_embedding").alias("name_embedding_i"),
+                F.col(f"b.name_embedding").alias("name_embedding_j"),
+                F.col(f"a.normalized_name_embedding").alias("normalized_name_embedding_i"),
+                F.col(f"b.normalized_name_embedding").alias("normalized_name_embedding_j"),
                 F.col(f"a.geoCode_lat").alias("geoCode_lat_i"),
                 F.col(f"a.geoCode_long").alias("geoCode_long_i"),
                 F.col(f"b.geoCode_lat").alias("geoCode_lat_j"),
@@ -69,16 +93,39 @@ class HotelPairScorerProcessor(BaseProcessor):
         pairs_filtered = pairs_with_distance.filter(F.col("geo_distance_km") <= 0.5)
 
         name_udf = F.udf(enhanced_name_scorer, "float")
-        pairs_with_name_score = pairs_filtered.withColumn(
-            "name_score",
+        jaccard_lcs = pairs_filtered.withColumn(
+            "name_score_jaccard_lcs",
             name_udf(
                 F.col("name_i"),
                 F.col("name_j")
             )
         )
 
+        normalized_jaccard_lcs = jaccard_lcs.withColumn(
+            "normalized_name_score_jaccard_lcs",
+            name_udf(
+                F.col("normalized_name_i"),
+                F.col("normalized_name_j")
+            )
+        )
+
+        sbert = normalized_jaccard_lcs.withColumn(
+            "name_score_sbert",
+            get_cosine_similarity_expr(F.col("name_embedding_i"), F.col("name_embedding_j")).cast("float")
+        )
+        # Handle cases where embedding might be null (fill with 0.0)
+        sbert = sbert.fillna(0.0, subset=["name_score_sbert"])
+
+        normalized_sbert = sbert.withColumn(
+            "normalized_name_score_sbert",
+            get_cosine_similarity_expr(F.col("normalized_name_embedding_i"), F.col("normalized_name_embedding_j")).cast("float")
+        )
+        # Handle cases where embedding might be null (fill with 0.0)
+        normalized_sbert = normalized_sbert.fillna(0.0, subset=["normalized_name_score_sbert"])
+
+
         ratings_udf = F.udf(star_rating_score, "float")
-        pairs_with_ratings_score = pairs_with_name_score.withColumn(
+        pairs_with_ratings_score = normalized_sbert.withColumn(
             "star_ratings_score",
             ratings_udf(
                 F.col("starRating_i"),
@@ -89,7 +136,9 @@ class HotelPairScorerProcessor(BaseProcessor):
         print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
         pairs_with_ratings_score.show(20, truncate=False)
 
-        cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection", "starRating_i", "starRating_j"]
+        cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection"
+            , "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j"
+            , "normalized_name_embedding_i", "normalized_name_embedding_j"]
         required_df = pairs_with_ratings_score.drop(*cols_to_remove)
 
         return required_df

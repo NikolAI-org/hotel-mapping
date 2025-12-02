@@ -8,11 +8,16 @@ hotel_pairs_schema = StructType([
     StructField("providerHotelId_j", StringType(), False),
     StructField("name_i", StringType(), False),
     StructField("name_j", StringType(), False),
+    StructField("normalized_name_i", StringType(), False),
+    StructField("normalized_name_j", StringType(), False),
     # StructField("geoCode_lat_i", DoubleType(), True),
     # StructField("geoCode_long_i", DoubleType(), True),
     # StructField("geoCode_lat_j", DoubleType(), True),
     # StructField("geoCode_long_j", DoubleType(), True),
     StructField("geo_distance_km", DoubleType(), False),
-    StructField("name_score", FloatType(), False),
-StructField("star_ratings_score", FloatType(), False)
+    StructField("name_score_jaccard_lcs", FloatType(), False),
+    StructField("normalized_name_score_jaccard_lcs", FloatType(), False),
+    StructField("name_score_sbert", FloatType(), False),
+    StructField("normalized_name_score_sbert", FloatType(), False),
+    StructField("star_ratings_score", FloatType(), False)
 ])

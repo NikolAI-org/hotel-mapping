@@ -27,6 +27,7 @@ from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor impo
     MandatoryFieldsFilterProcessor,
 )
 from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
+from hotel_data.pipeline.preprocessor.processors.sbert_vectorizer import add_sbert_vectors
 from hotel_data.pipeline.preprocessor.processors.timestamp_processor import (
     TimestampAppenderProcessor,
 )
@@ -276,7 +277,7 @@ def process_batch(batch_df, batch_id, manager: DeltaTableManager):
     lowercase_processor = LowercaseProcessor(EXCLUDE_LOWERCASE_FIELDS)
     timestamp_processor = TimestampAppenderProcessor()
     default_value_processor = DefaultValueProcessor(critical_fields=CRITICAL_FIELDS)
-    name_formatter_processor = NameFormatterProcessor(NAME_FORMATTER_FIELDS)
+    name_formatter_processor = NameFormatterProcessor(ADDRESS_FIELDS)
     geo_hash_processor = GeoHashProcessor()
 
     # Pipeline step 1: flatten
@@ -297,6 +298,16 @@ def process_batch(batch_df, batch_id, manager: DeltaTableManager):
     )
     valid_df = transformation_pipeline.run(valid_df)
     valid_df = geo_hash_processor.process(valid_df)
+    valid_df = add_sbert_vectors(valid_df)
+    print(f"name_embedding completed for SBERT")
+    valid_df = add_sbert_vectors(valid_df, input_col="normalized_name", output_col="normalized_name_embedding")
+    print(f"normalized_name_embedding completed for SBERT")
+    valid_df = add_sbert_vectors(
+        valid_df,
+        input_col="combined_address",
+        output_col="address_embedding"  # New column for the address vector
+    )
+    print("Address embedding completed for SBERT")
 
     # for row in valid_df.limit(1).collect():
     #     print(json.dumps(row.asDict(recursive=True), indent=2, default=datetime_handler))

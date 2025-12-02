@@ -1,0 +1,7 @@
+# Add your other top-level packages here too
+delta-spark==4.0.0
+sentence-transformers==3.3.1
+
+# Core Deduplication Libraries
+fuzzywuzzy
+python-Levenshtein

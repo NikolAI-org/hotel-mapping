@@ -24,6 +24,10 @@ flattened_hotel_schema = StructType([
     StructField("contact_address_country_name", StringType(), True),
     StructField("contact_address_postalCode", StringType(), True),
 
+    # NEW FIELD: SBERT Vector (384 dimensions for all-MiniLM-L6-v2)
+    StructField("name_embedding", ArrayType(FloatType()), True),
+    StructField("normalized_name_embedding", ArrayType(FloatType()), True),
+
     # Contact → Phones/Fax/Emails
     StructField("contact_phones", ArrayType(StringType()), True),
     StructField("contact_fax", ArrayType(StringType()), True),
