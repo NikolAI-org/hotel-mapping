@@ -28,6 +28,31 @@
     OR
     find . -type d -name "__pycache__" -exec rm -r {} +
     ```
+# Hotel Pairs Column details
+    ```
+        
+| Column name                       | Description                                        |
+|-----------------------------------|----------------------------------------------------|
+| id                                | vervotec id                                        |
+| providerHotelId                   | provider Hotel Id                                  |
+| name                              | hotel name                                         |
+| normalized_name                   | normalized hotel name                              |
+| geo_distance_km                   | geo distance km btw pair                           |
+| name_score_jaccard_lcs            | hotel name score using jaccard_lcs algo            |
+| normalized_name_score_jaccard_lcs | hotel normalized name score using jaccard_lcs algo |
+| name_score_sbert                  | hotel name score using sbert algo                  |
+| normalized_name_score_sbert       | hotel normalized name score using sbert algo       |
+| star_ratings_score                | hotel star ratings score                           |
+| address_line1_score               | hotel address line1 score                          |
+| address_sbert_score               | hotel address line1 score using sbert              |
+| postal_code_match                 | postal code match score                            |
+| country_match                     | country name match                                 |
+| phone match score                 | last 10 phone number match score                   |
+| email_match_score                 |  email_match_score                                                  |
+| fax_match_score                   |   fax_match_score                                                                  |
+
+    ```
+
 # Minikube Setup
 * Start Minikube
     ```
@@ -131,6 +156,7 @@ mc ls local
 mc admin info local
 mc admin heal local
 ```
+
 
 # Markdown View Command (VS Code)
 ```
