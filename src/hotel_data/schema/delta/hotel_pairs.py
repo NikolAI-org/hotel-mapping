@@ -19,5 +19,12 @@ hotel_pairs_schema = StructType([
     StructField("normalized_name_score_jaccard_lcs", FloatType(), False),
     StructField("name_score_sbert", FloatType(), False),
     StructField("normalized_name_score_sbert", FloatType(), False),
-    StructField("star_ratings_score", FloatType(), False)
+    StructField("star_ratings_score", FloatType(), False),
+    StructField("address_line1_score", FloatType(), False),
+    StructField("postal_code_match", FloatType(), False),
+    StructField("country_match", FloatType(), False),
+    StructField("address_sbert_score", FloatType(), False),
+    StructField("phone_match_score", FloatType(), False),
+    StructField("email_match_score", FloatType(), False),
+    StructField("fax_match_score", FloatType(), False),
 ])

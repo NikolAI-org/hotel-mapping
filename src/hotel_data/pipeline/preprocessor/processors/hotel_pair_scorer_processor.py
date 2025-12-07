@@ -4,8 +4,10 @@ from pyspark.sql import functions as F
 from sympy.physics.quantum.gate import normalized
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_score
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer
+from hotel_data.pipeline.preprocessor.utils.phone_number_utils import normalize_phone_expr, arrays_overlap_check
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
 from pyspark.sql import functions as F
@@ -69,6 +71,20 @@ class HotelPairScorerProcessor(BaseProcessor):
                 F.col(f"b.geoCode_long").alias("geoCode_long_j"),
                 F.col(f"a.starRating").alias("starRating_i"),
                 F.col(f"b.starRating").alias("starRating_j"),
+                F.col(f"a.contact_address_line1").alias("contact_address_line1_i"),
+                F.col(f"b.contact_address_line1").alias("contact_address_line1_j"),
+                F.col(f"a.contact_address_postalCode").alias("contact_address_postalCode_i"),
+                F.col(f"b.contact_address_postalCode").alias("contact_address_postalCode_j"),
+                F.col(f"a.contact_address_country_name").alias("contact_address_country_name_i"),
+                F.col(f"b.contact_address_country_name").alias("contact_address_country_name_j"),
+                F.col(f"a.address_embedding").alias("address_embedding_i"),
+                F.col(f"b.address_embedding").alias("address_embedding_j"),
+                F.col(f"a.contact_phones").alias("contact_phones_i"),
+                F.col(f"b.contact_phones").alias("contact_phones_j"),
+                F.col(f"a.contact_fax").alias("contact_fax_i"),
+                F.col(f"b.contact_fax").alias("contact_fax_j"),
+                F.col(f"a.contact_emails").alias("contact_emails_i"),
+                F.col(f"b.contact_emails").alias("contact_emails_j"),
                 F.array_intersect(
                     F.col("a.geohash"), F.col("b.geohash")
                 ).alias("geo_intersection")
@@ -123,9 +139,70 @@ class HotelPairScorerProcessor(BaseProcessor):
         # Handle cases where embedding might be null (fill with 0.0)
         normalized_sbert = normalized_sbert.fillna(0.0, subset=["normalized_name_score_sbert"])
 
+        # Register UDF
+        token_sort_udf = F.udf(token_sort_score, "float")
+
+        address_score = normalized_sbert.withColumn("address_line1_score", token_sort_udf(
+            F.col("contact_address_line1_i"),
+            F.col("contact_address_line1_j")
+        ))
+
+        address_score = address_score.withColumn(
+        "postal_code_match",
+        F.when(
+            # Check for match only if BOTH postal codes are NOT NULL
+            (F.col("contact_address_postalCode_i").isNotNull()) &
+            (F.col("contact_address_postalCode_i") == F.col("contact_address_postalCode_j")),
+            F.lit(1.0)
+        ).otherwise(F.lit(0.0))
+        .cast("float")
+        ).withColumn(
+            "country_match",
+            F.when(
+                (F.col("contact_address_country_name_i").isNotNull()) &
+                (F.col("contact_address_country_name_i") == F.col("contact_address_country_name_j")),
+                F.lit(1.0)
+            ).otherwise(F.lit(0.0))
+            .cast("float")
+        ).withColumn(
+            "address_sbert_score",
+            get_cosine_similarity_expr(
+                F.col("address_embedding_i"),
+                F.col("address_embedding_j")
+            ).cast("float") # Ensure cast to match schema
+        )
+
+        phone_normalized = address_score.withColumn("norm_phones_i", normalize_phone_expr(F.col("contact_phones_i"))) \
+            .withColumn("norm_phones_j", normalize_phone_expr(F.col("contact_phones_j"))) \
+            .withColumn("norm_faxes_i", normalize_phone_expr(F.col("contact_fax_i"), 10)) \
+            .withColumn("norm_faxes_j", normalize_phone_expr(F.col("contact_fax_j"), 10))
+
+        # B. Calculate Binary Scores
+        df_scores = phone_normalized.withColumn(
+            "phone_match_score",
+            F.when(
+                arrays_overlap_check("norm_phones_i", "norm_phones_j"),
+                F.lit(1.0)
+            ).otherwise(F.lit(0.0)).cast("float")  # Ensure FloatType for Delta schema
+        ).withColumn(
+            "email_match_score",
+            F.when(
+                arrays_overlap_check("contact_emails_i", "contact_emails_j"),
+                F.lit(1.0)
+            ).otherwise(F.lit(0.0)).cast("float")
+        ).withColumn(
+            "fax_match_score",
+            F.when(
+                arrays_overlap_check("contact_fax_i", "contact_fax_j"),
+                F.lit(1.0)
+            ).otherwise(F.lit(0.0)).cast("float")
+        )
+
+        # Ensure scores are 0.0 instead of NULL where comparison failed due to missing data
+        address_score = df_scores.fillna(0.0, subset=["address_line1_score", "address_sbert_score"])
 
         ratings_udf = F.udf(star_rating_score, "float")
-        pairs_with_ratings_score = normalized_sbert.withColumn(
+        pairs_with_ratings_score = address_score.withColumn(
             "star_ratings_score",
             ratings_udf(
                 F.col("starRating_i"),
@@ -138,41 +215,10 @@ class HotelPairScorerProcessor(BaseProcessor):
 
         cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection"
             , "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j"
-            , "normalized_name_embedding_i", "normalized_name_embedding_j"]
+            , "normalized_name_embedding_i", "normalized_name_embedding_j", "contact_address_line1_i", "contact_address_line1_j"
+            , "contact_address_postalCode_i", "contact_address_postalCode_j", "contact_address_country_name_i", "contact_address_country_name_j"
+            , "address_embedding_i", "address_embedding_j", "contact_phones_i", "contact_phones_j", "contact_fax_i", "contact_fax_j"
+            , "contact_emails_i", "contact_emails_j", "norm_phones_i", "norm_phones_j", "norm_faxes_i", "norm_faxes_j"]
         required_df = pairs_with_ratings_score.drop(*cols_to_remove)
 
         return required_df
-
-        # # Explode geoHash arrays for proper join
-        # h1_exploded = h1.withColumn("gh", F.explode_outer("geoHash"))
-        # h2_exploded = h2.withColumn("gh", F.explode_outer("geoHash"))
-        #
-        # pairs_df = (
-        #     h1_exploded.alias("h1")
-        #     .join(h2_exploded.alias("h2"), F.col("h1.gh") == F.col("h2.gh"))
-        #     .filter(F.col("h1.id") < F.col("h2.id"))
-        # )
-        #
-        # scored_pairs_df = pairs_df.select(
-        #     F.col("h1.id").alias("id_i"),
-        #     F.col("h2.id").alias("id_j"),
-        #     F.array_distinct(F.flatten(F.array(F.col("h1.geoHash")))).cast(ArrayType(StringType(), True)).alias(
-        #         "geoHash"),
-        #     F.when(
-        #         F.col("h1.contact_address_city_name") == F.col("h2.contact_address_city_name"),
-        #         1.0
-        #     ).otherwise(0.0).alias("city_score"),
-        #     (1 - F.abs(F.col("h1.starRating").cast("double") - F.col("h2.starRating").cast("double")) / 5).alias(
-        #         "rating_score"),
-        #     F.lit(0.0).alias("name_score")
-        # )
-        #
-        # scored_pairs_df = scored_pairs_df.withColumn(
-        #     "total_score",
-        #     (F.col("city_score") + F.col("rating_score") + F.col("name_score")) / 3
-        # )
-        #
-        # return scored_pairs_df
-
-
-

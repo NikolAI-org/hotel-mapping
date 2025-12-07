@@ -5,7 +5,7 @@ from pyspark.sql.types import FloatType
 from fuzzywuzzy import fuzz
 
 
-def token_sort_score(s1: str, s2: str) -> float:
+def token_sort_score(s1: str, s2: str):
     """
     Calculates Token Sort Ratio similarity (0.0 to 1.0).
     Best for matching addresses with word order differences.
