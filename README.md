@@ -48,8 +48,9 @@
 | postal_code_match                 | postal code match score                            |
 | country_match                     | country name match                                 |
 | phone match score                 | last 10 phone number match score                   |
-| email_match_score                 |  email_match_score                                                  |
-| fax_match_score                   |   fax_match_score                                                                  |
+| email_match_score                 |  email_match_score                                 |
+| fax_match_score                   |   |
+
 
     ```
 

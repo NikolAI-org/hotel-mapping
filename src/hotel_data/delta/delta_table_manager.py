@@ -1,3 +1,4 @@
+from typing import Any, cast
 from pyspark.sql import SparkSession, DataFrame
 from delta.tables import DeltaTable
 import os
@@ -89,7 +90,9 @@ class DeltaTableManager:
     # Table operations
     # ------------------------------------------------------------------------
 
-    def create_table(self, table_name: str, df: DataFrame = None, comment: str = ""):
+    def create_table(
+        self, table_name: str, df: DataFrame | None = None, comment: str = ""
+    ):
         """
         Create Delta table if it doesn't exist.
         If df is provided, writes initial data; otherwise creates empty table.
@@ -102,14 +105,18 @@ class DeltaTableManager:
             return
         print(f"Writing to path {path}")
         if df is not None and df.columns:
-            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
+            df.write.format("delta").option("overwriteSchema", "true").mode(
+                "overwrite"
+            ).save(path)
             print(f"📦 Written initial data to {path}")
         else:
             # Write empty DataFrame with schema to avoid empty schema errors
             df = (
                 df if df is not None else self.spark.createDataFrame([], "id STRING")
             )  # default column
-            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
+            df.write.format("delta").option("overwriteSchema", "true").mode(
+                "overwrite"
+            ).save(path)
             print(f"📦 Created empty table at {path}")
 
         self.spark.sql(
@@ -131,7 +138,14 @@ class DeltaTableManager:
         print(f"------- Rows: {df.count()}")
         return df
 
-    def write_table(self, table_name: str, df: DataFrame, mode: str = "append", merge_schema: str = "true", overwrite_schema: str = "true"):
+    def write_table(
+        self,
+        table_name: str,
+        df: DataFrame,
+        mode: str = "append",
+        merge_schema: str = "true",
+        overwrite_schema: str = "true",
+    ):
         """
         Write data into Delta table.
         Supports append/overwrite with schema evolution.
@@ -145,7 +159,9 @@ class DeltaTableManager:
         print(
             f"📝 Writing data to '{fq_name}' Path: {path} (mode={mode}, mergeSchema={merge_schema}, overwriteSchema={overwrite_schema})..."
         )
-        df.write.format("delta").mode(mode).option("mergeSchema", merge_schema).option("overwriteSchema", overwrite_schema).save(path)
+        df.write.format("delta").mode(mode).option("mergeSchema", merge_schema).option(
+            "overwriteSchema", overwrite_schema
+        ).save(path)
         # df.write.format("delta").mode(mode).option("mergeSchema", "true").saveAsTable(fq_name)
         print(f"✅ Data written to '{fq_name}' successfully.")
 
@@ -206,18 +222,48 @@ class DeltaTableManager:
         except Exception as e:
             print(f"⚠️ Could not drop from catalog: {e}")
 
-        if delete_data:
-            try:
-                # Get the Hadoop FileSystem object
-                hadoop_conf = self.spark._jsc.hadoopConfiguration()
-                fs = self.spark._jvm.org.apache.hadoop.fs.FileSystem.get(
-                    self.spark._jvm.java.net.URI(path), hadoop_conf
-                )
-                # Delete the path recursively
-                fs.delete(self.spark._jvm.org.apache.hadoop.fs.Path(path), True)
-                print(f"🗑️ Deleted underlying data at {path}")
-            except Exception as e:
-                print(f"⚠️ Failed to delete data path {path}: {e}")
+        if not delete_data:
+            return
+
+        # --- JVM interactions: runtime checks + cast to Any for the type checker ---
+        jsc = getattr(self.spark, "_jsc", None)
+        jvm = getattr(self.spark, "_jvm", None)
+
+        if jsc is None or jvm is None:
+            # If spark session isn't fully initialized with a JVM (rare in normal PySpark usage),
+            # don't attempt file deletion via Hadoop FileSystem.
+            print("Spark session JVM/JSC not available; skipping data deletion.")
+            return
+
+        # Tell type-checkers to treat these as opaque callables/objects
+        jsc = cast(Any, jsc)
+        jvm = cast(Any, jvm)
+
+        try:
+            # Get Hadoop configuration and FileSystem via the JVM
+            hadoop_conf = jsc.hadoopConfiguration()
+            uri = jvm.java.net.URI(path)  # java.net.URI(path)
+            fs = jvm.org.apache.hadoop.fs.FileSystem.get(uri, hadoop_conf)
+
+            # Delete the path recursively
+            hadoop_path = jvm.org.apache.hadoop.fs.Path(path)
+            deleted = fs.delete(hadoop_path, True)
+            print(f"Deleted underlying data at {path}: {deleted}")
+        except Exception as e:
+            print(f"Failed to delete data path {path}: {e}")
+
+        # if delete_data:
+        #     try:
+        #         # Get the Hadoop FileSystem object
+        #         hadoop_conf = self.spark._jsc.hadoopConfiguration()
+        #         fs = self.spark._jvm.org.apache.hadoop.fs.FileSystem.get(
+        #             self.spark._jvm.java.net.URI(path), hadoop_conf
+        #         )
+        #         # Delete the path recursively
+        #         fs.delete(self.spark._jvm.org.apache.hadoop.fs.Path(path), True)
+        #         print(f"🗑️ Deleted underlying data at {path}")
+        #     except Exception as e:
+        #         print(f"⚠️ Failed to delete data path {path}: {e}")
 
     # ------------------------------------------------------------------------
     # Utilities: List catalogs, schemas, and tables
@@ -229,7 +275,7 @@ class DeltaTableManager:
         except Exception:
             return self.spark.sql("SELECT 'spark_catalog' AS catalog")
 
-    def list_schemas(self, catalog: str = None):
+    def list_schemas(self, catalog: str = ""):
         try:
             cat = (
                 catalog
@@ -242,7 +288,7 @@ class DeltaTableManager:
         except Exception:
             return None
 
-    def list_tables(self, schema: str = None):
+    def list_tables(self, schema: str = ""):
         ns = schema if schema else self._namespace()
         try:
             print(f"SHOW TABLES IN spark_catalog.{ns}")

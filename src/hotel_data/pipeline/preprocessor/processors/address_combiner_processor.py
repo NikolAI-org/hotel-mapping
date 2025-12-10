@@ -4,12 +4,12 @@ from pyspark.sql.functions import concat_ws, regexp_replace, col
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
-class AddressCombinerProcessor(BaseProcessor):
+class AddressCombinerProcessor(BaseProcessor[DataFrame]):
     def __init__(self, address_fields: list[str], output_col="combined_address"):
         self.address_fields = address_fields
         self.output_col = output_col
 
-    def process(self, df: DataFrame) -> DataFrame:
+    def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         return df.withColumn(
             self.output_col,
             regexp_replace(

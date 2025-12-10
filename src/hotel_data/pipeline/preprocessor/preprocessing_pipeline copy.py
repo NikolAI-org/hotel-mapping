@@ -6,7 +6,7 @@ from py4j.protocol import Py4JNetworkError, Py4JError
 from pyspark.sql import SparkSession
 
 from hotel_data.config.paths import INPUT_FILE_PATH, CATALOG_NAME, SCHEMA_NAME, BASE_DELTA_PATH, TABLE_HOTELS, \
-    TABLE_HOTELS_FAILED, TABLE_HOTELS_NAME, TABLE_HOTELS_FAILED_NAME, WAREHOUSE_DIR
+    TABLE_HOTELS_FAILED, TABLE_HOTELS_NAME, TABLE_HOTELS_FAILED_NAME
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
     AddressCombinerProcessor,
@@ -80,24 +80,96 @@ genericFlattner = GenericFlattener(explode_arrays=True)
 
 def main():
     spark = (
-        SparkSession.builder.appName("HotelsPipelineRead")
-        # use EXACTLY the same configs as preprocessing_pipeline.py
-        .config("spark.jars.packages", ",".join([
-            "io.delta:delta-spark_2.13:4.0.0",
-            "org.apache.hadoop:hadoop-aws:3.4.1",
-        ]))
+        SparkSession.builder.appName("HotelsPipeline")
+        # ✅ JARs for Delta + Hadoop AWS + AWS SDK
+        .config(
+            "spark.jars.packages",
+            ",".join(
+                [
+                    "io.delta:delta-spark_2.13:4.0.0",
+                    "org.apache.hadoop:hadoop-aws:3.4.1",
+                ]
+            ),
+        )
+        # ✅ Delta SQL extensions
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        # ✅ S3A implementation
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config(
+            "spark.hadoop.fs.s3a.endpoint",
+            "http://172.16.16.152:9000",
+        )
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)  # or your S3A path
-        .enableHiveSupport()
+        .config("spark.hadoop.fs.s3a.mkdirs.enabled", "true")
+        .config("spark.hadoop.fs.s3a.connection.maximum", "100")
+        .config("spark.hadoop.fs.s3a.attempts.maximum", "10")
+        # .config("spark.hadoop.fs.s3a.experimental.input.fadvise", "sequential")
+        # .config("spark.hadoop.fs.s3a.fail.on.empty.path", "false")
+        .config(
+            "spark.databricks.delta.logStore.class",
+            "org.apache.spark.sql.delta.storage.S3SingleDriverLogStore",
+        )
+        .config(
+            "spark.hadoop.fs.s3a.signing-region", "us-east-2"
+        )  # Must match the signed region in the log
+        # .config("spark.hadoop.fs.s3a.signing-algorithm", "AWS4-HMAC-SHA256")
+        .config(
+            "spark.hadoop.fs.s3a.aws.credentials.provider",
+            "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+        )
+        # ✅ S3A timeouts & retries (milliseconds)
+        # .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
+        # .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000")
+        # .config("spark.hadoop.fs.s3a.connection.establish.timeout", "30000")
+        # .config("spark.hadoop.fs.s3a.attempts.maximum", "3")
+        # .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000")
+        # .config("spark.hadoop.fs.s3a.log.events", "true")
+        # ✅ Multipart uploads (values in bytes)
+        # .config(
+        #     "spark.hadoop.fs.s3a.multipart.threshold", str(128 * 1024 * 1024)
+        # )  # 128 MB
+        # .config("spark.hadoop.fs.s3a.multipart.size", str(64 * 1024 * 1024))  # 64 MB
+        # .config("spark.hadoop.fs.s3a.multipart.purge", "false")
+        # .config(
+        #     "spark.hadoop.fs.s3a.multipart.purge.age", str(24 * 60 * 60 * 1000)
+        # )  # 24h in ms
+        # .config(
+        #     "spark.hadoop.fs.s3a.multipart.purge.age.seconds", str(24 * 60 * 60)
+        # )  # 24h in seconds
+        # ✅ Delta + Hive compatibility
+        # .config("spark.databricks.delta.schema.autoMerge.enabled", "true")
+        # .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
+        # .config("spark.sql.catalogImplementation", "hive")
+        # .enableHiveSupport()
         .getOrCreate()
     )
+
+    spark.conf.set("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true")
+    spark.conf.set(
+        "spark.delta.logStore.class",
+        "org.apache.spark.sql.delta.storage.S3SingleDriverLogStore",
+    )
+    spark.sparkContext.setLogLevel("WARN")
+
+    hadoopConf = spark._jsc.hadoopConfiguration() # type: ignore
+    hadoopConf.set("fs.s3a.endpoint", "http://172.16.16.152:9000")
+    hadoopConf.set("fs.s3a.access.key", "minioadmin")
+    hadoopConf.set("fs.s3a.secret.key", "minioadmin")
+    hadoopConf.set("fs.s3a.path.style.access", "true")
+    hadoopConf.set("fs.s3a.connection.ssl.enabled", "false")
+    hadoopConf.set(
+        "fs.s3a.aws.credentials.provider",
+        "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+    )
+    hadoopConf.set("fs.s3a.mkdirs.enabled", "true")
+    hadoopConf.set("spark.hadoop.fs.s3a.path.style.access", "true")
     
     spark.sql("SHOW DATABASES").show()
 

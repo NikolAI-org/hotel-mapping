@@ -3,12 +3,14 @@ from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, current_timestamp
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+from typing import Generic, TypeVar, Tuple
 
-class MandatoryFieldsFilterProcessor(BaseProcessor):
+
+class MandatoryFieldsFilterProcessor(BaseProcessor[Tuple[DataFrame, DataFrame]]):
     def __init__(self, critical_fields: list[str]):
         self.critical_fields = critical_fields
 
-    def process(self, df: DataFrame):
+    def process(self, df: DataFrame, prefix: str = ""):
         valid_df = df
         for field in self.critical_fields:
             valid_df = valid_df.filter(col(field).isNotNull())

@@ -26,7 +26,7 @@ def get_cosine_similarity_expr(col_a, col_b):
         lambda acc, x: acc + x                        # Sum them up
     )
 
-class HotelPairScorerProcessor(BaseProcessor):
+class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
     """
     Compute pairwise attribute scores for hotels grouped by geohash.
     Returns a DataFrame with id_i, id_j, geoHash, and attribute scores.
@@ -36,7 +36,7 @@ class HotelPairScorerProcessor(BaseProcessor):
         self.id_col = id_col
         self.geohash_col = geohash_col
 
-    def process(self, df: DataFrame) -> DataFrame:
+    def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         df = df.withColumn("unique_key",
                                        F.concat(F.col("providerId"), F.lit("_"), F.col("providerHotelId")))
         a = df.alias("a")

@@ -17,7 +17,7 @@ H3_RESOLUTION = 8
 K_RING_DISTANCE = 1 # k=1 is the central cell + 6 immediate neighbors
 
 
-class GeoHashProcessor(BaseProcessor):
+class GeoHashProcessor(BaseProcessor[DataFrame]):
 
     def __init__(self, resolution: int = H3_RESOLUTION, k_distance: int = K_RING_DISTANCE):
         self.resolution = resolution
@@ -26,7 +26,7 @@ class GeoHashProcessor(BaseProcessor):
         # Register the H3 logic as a PySpark UDF
         self.geohash_udf = F.udf(
             self._h3_k_ring_geohashes, 
-            ArrayType(StringType())
+            ArrayType(StringType()) # type: ignore
         )
 
     # ----------------------------------------------------
@@ -34,7 +34,7 @@ class GeoHashProcessor(BaseProcessor):
     # ----------------------------------------------------
     
 
-    def process(self, df: DataFrame) -> DataFrame:
+    def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         """
         Applies the H3 geohash UDF and writes the result directly to the 
         top-level 'geohash' column in the flat schema.

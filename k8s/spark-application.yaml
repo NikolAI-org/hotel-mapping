@@ -94,7 +94,7 @@ spec:
     # Use the fully qualified Kubernetes Service DNS name, including the port.
     # "spark.hadoop.fs.s3a.endpoint": "http://seaweedfs-s3.delta-store.svc.cluster.local:8333"
     # "spark.hadoop.fs.s3a.endpoint": "http://seaweed-s3.local"
-    "spark.hadoop.fs.s3a.endpoint": "http://192.168.1.4:9000"
+    "spark.hadoop.fs.s3a.endpoint": "http://172.16.16.152:9000"
 
     # "spark.hadoop.fs.s3a.path.style.access": "true"
     # "spark.hadoop.fs.s3a.connection.ssl.enabled": "false"

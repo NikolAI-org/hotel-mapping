@@ -2,7 +2,7 @@
 from pyspark.sql import SparkSession
 
 from hotel_data.config.paths import CATALOG_NAME, SCHEMA_NAME, BASE_DELTA_PATH, TABLE_HOTELS_PAIRS, \
-    TABLE_HOTELS_PAIRS_NAME
+    TABLE_HOTELS_PAIRS_NAME, WAREHOUSE_DIR
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.schema.delta.hotel_pairs import hotel_pairs_schema
 from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import HotelPairScorerProcessor
@@ -11,13 +11,34 @@ from pyspark.sql import functions as F
 
 
 def main():
+    # spark = (
+    #     SparkSession.builder.appName("ScoreComputePipeline")
+    #     .config("spark.jars.packages", "io.delta:delta-spark_2.13:4.0.0,org.apache.hadoop:hadoop-aws:3.4.1")
+    #     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    #     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    #     .config("spark.executor.memory", "8g")
+    #     .config("spark.driver.memory", "4g")
+    #     .getOrCreate()
+    # )
     spark = (
-        SparkSession.builder.appName("ScoreComputePipeline")
-        .config("spark.jars.packages", "io.delta:delta-spark_2.13:4.0.0,org.apache.hadoop:hadoop-aws:3.4.1")
+        SparkSession.builder.appName("HotelsPipelineRead")
+        # use EXACTLY the same configs as preprocessing_pipeline.py
+        .config("spark.jars.packages", ",".join([
+            "io.delta:delta-spark_2.13:4.0.0",
+            "org.apache.hadoop:hadoop-aws:3.4.1",
+        ]))
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+        .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)  # or your S3A path
         .config("spark.executor.memory", "8g")
         .config("spark.driver.memory", "4g")
+        .enableHiveSupport()
         .getOrCreate()
     )
 

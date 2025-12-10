@@ -3,10 +3,10 @@ import os
 # Root base directory for all delta tables
 # Or for local dev: "/mnt/data/delta"
 #BASE_DELTA_PATH = os.getenv("DELTA_BASE_PATH", "s3://your-bucket/hotel-data/delta")
-BASE_DELTA_PATH = os.getenv("DELTA_BASE_PATH", "/mnt/c/Users/P7500020/hotel/data/delta")
-WAREHOUSE_DIR = os.getenv("WAREHOUSE_DIR", "/mnt/c/Users/P7500020/hotel/data/delta")
+BASE_DELTA_PATH = os.getenv("DELTA_BASE_PATH", "s3a://delta-bucket/hotel_data/delta")
+WAREHOUSE_DIR = os.getenv("WAREHOUSE_DIR", "s3a://warehouse")
 
-INPUT_FILE_PATH = "/mnt/c/Users/P7500020/hotel/input"
+INPUT_FILE_PATH = "s3a://input-files"
 
 CATALOG_NAME = "spark_catalog"
 SCHEMA_NAME = "bronze"

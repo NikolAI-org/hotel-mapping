@@ -5,11 +5,11 @@ from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.utils.hotel_data_flattner import GenericFlattener
 
 
-class HotelFlattenerProcessor(BaseProcessor):
+class HotelFlattenerProcessor(BaseProcessor[DataFrame]):
     def __init__(self, explode_arrays=True):
         self.flattener = GenericFlattener(explode_arrays=explode_arrays)
 
-    def process(self, df: DataFrame) -> DataFrame:
+    def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         hotels_df = (
             df.withColumn("hotel", F.explode_outer(F.col("hotels")))
             .select("hotel.*")
