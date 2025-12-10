@@ -1,3 +1,4 @@
+from pathlib import Path
 import traceback
 import time
 from datetime import datetime
@@ -5,7 +6,7 @@ from datetime import datetime
 from py4j.protocol import Py4JNetworkError, Py4JError
 from pyspark.sql import SparkSession
 
-from hotel_data.config.paths import INPUT_FILE_PATH, CATALOG_NAME, SCHEMA_NAME, BASE_DELTA_PATH, TABLE_HOTELS, \
+from hotel_data.config.paths import DERBY_HOME, INPUT_FILE_PATH, CATALOG_NAME, SCHEMA_NAME, BASE_DELTA_PATH, TABLE_HOTELS, \
     TABLE_HOTELS_FAILED, TABLE_HOTELS_NAME, TABLE_HOTELS_FAILED_NAME, WAREHOUSE_DIR
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
@@ -76,30 +77,42 @@ ADDRESS_FIELDS = [
 EXCLUDE_LOWERCASE_FIELDS = ["original_message"]
 
 genericFlattner = GenericFlattener(explode_arrays=True)
-
+Path(DERBY_HOME).mkdir(parents=True, exist_ok=True)
 
 def main():
     spark = (
-        SparkSession.builder.appName("HotelsPipelineRead")
-        # use EXACTLY the same configs as preprocessing_pipeline.py
+        SparkSession.builder.appName("HotelsPipelineWrite")
         .config("spark.jars.packages", ",".join([
             "io.delta:delta-spark_2.13:4.0.0",
             "org.apache.hadoop:hadoop-aws:3.4.1",
         ]))
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
+        # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)  # or your S3A path
+        # ---- Hive metastore (Derby) for local prod-like testing ----
+        .config(
+            "spark.hadoop.javax.jdo.option.ConnectionURL",
+            f"jdbc:derby:{DERBY_HOME}/metastore_db;create=true",
+        )
+        .config(
+            "spark.hadoop.javax.jdo.option.ConnectionDriverName",
+            "org.apache.derby.jdbc.EmbeddedDriver",
+        )
+        .config("spark.hadoop.datanucleus.autoCreateSchema", "true")
+        .config("spark.hadoop.datanucleus.fixedDatastore", "true")
+        .config("spark.sql.catalogImplementation", "hive")
         .enableHiveSupport()
         .getOrCreate()
     )
     
-    spark.sql("SHOW DATABASES").show()
+    # spark.sql("SHOW DATABASES").show()
 
     # 1. Read
     reader = JSONStreamReader(

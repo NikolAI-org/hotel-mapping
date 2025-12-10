@@ -28,6 +28,10 @@
     OR
     find . -type d -name "__pycache__" -exec rm -r {} +
     ```
+4. Run the test cases
+    ```
+    poetry run pytest tests/unit/test_orchestrator.py -v
+    ```
 # Hotel Pairs Column details
     ```
         

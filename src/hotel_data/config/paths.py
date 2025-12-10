@@ -5,6 +5,7 @@ import os
 #BASE_DELTA_PATH = os.getenv("DELTA_BASE_PATH", "s3://your-bucket/hotel-data/delta")
 BASE_DELTA_PATH = os.getenv("DELTA_BASE_PATH", "s3a://delta-bucket/hotel_data/delta")
 WAREHOUSE_DIR = os.getenv("WAREHOUSE_DIR", "s3a://warehouse")
+DERBY_HOME = "/home/akshay/spark_home/spark_derby_metastore" # Use the same path as in the reader
 
 INPUT_FILE_PATH = "s3a://input-files"
 

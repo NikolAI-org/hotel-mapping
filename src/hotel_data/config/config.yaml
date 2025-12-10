@@ -1,0 +1,47 @@
+# config.yaml - COMPLETE CONFIGURATION FILE
+
+storage:
+  minio_endpoint: "http://minio:9000"
+  minio_access_key: "minioadmin"
+  minio_secret_key: "minioadmin"
+  minio_bucket: "hotel-data"
+  delta_path: "s3a://hotel-data/delta"
+
+scoring:
+  weights:
+    geo_distance_km: 0.15
+    normalized_name_score_sbert: 0.20
+    name_score_jaccard_lcs: 0.20
+    star_ratings_score: 0.05
+    address_sbert_score: 0.15
+    phone_match_score: 0.10
+    postal_code_match: 0.05
+    country_match: 0.05
+    email_match_score: 0.05
+  
+  thresholds:
+    high_confidence: 0.85
+    medium_confidence: 0.70
+    low_confidence: 0.55
+  
+  exclusion_rules:
+    max_geo_distance_km: 5.0
+    min_country_match: 1.0
+    min_normalized_name_score: 0.3
+
+clustering:
+  min_score_threshold: 0.70
+  max_cluster_size: null
+  enable_black_hole_prevention: true
+  black_hole_max_threshold: 0.95
+
+streaming:
+  enabled: false
+  checkpoint_path: "s3a://hotel-data/checkpoints"
+  trigger_interval: "5 minutes"
+  max_batch_size: 10000
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  output_file: null

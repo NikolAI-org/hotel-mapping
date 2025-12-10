@@ -1,0 +1,340 @@
+# pipeline/orchestrator.py
+
+from pyspark.sql import DataFrame
+from typing import Dict, Any, Tuple
+from hotel_data.pipeline.clustering.core.clustering_interfaces import (
+    Logger,
+    ScoringStrategy,
+    ConflictDetectionStrategy,
+    ClusteringStrategy,
+    MetadataRecorder,
+    ClusterWriter
+)
+
+class HotelClusteringOrchestrator:
+    """
+    Orchestrator for the entire hotel clustering pipeline
+    
+    Coordinates all services to process hotels and create clusters:
+    1. Score pairs (similarity calculation)
+    2. Detect conflicts (transitive property violations)
+    3. Create clusters (group similar hotels)
+    4. Record metadata (track statistics)
+    5. Write results (save to storage)
+    """
+    
+    def __init__(
+        self,
+        scorer: ScoringStrategy,
+        conflict_detector: ConflictDetectionStrategy,
+        clusterer: ClusteringStrategy,
+        metadata_recorder: MetadataRecorder,
+        writer: ClusterWriter,
+        logger: Logger
+    ):
+        """
+        Initialize the orchestrator with all services
+        
+        Args:
+            scorer: ScoringStrategy (e.g., CompositeScoringStrategy)
+            conflict_detector: ConflictDetectionStrategy
+            clusterer: ClusteringStrategy
+            metadata_recorder: MetadataRecorder
+            writer: ClusterWriter
+            logger: Logger
+        """
+        self.scorer = scorer
+        self.conflict_detector = conflict_detector
+        self.clusterer = clusterer
+        self.metadata_recorder = metadata_recorder
+        self.writer = writer
+        self.logger = logger
+        
+        # Track state
+        self._is_initialized = True
+        
+        self.logger.info(
+            "HotelClusteringOrchestrator initialized",
+            scorer=type(scorer).__name__,
+            conflict_detector=type(conflict_detector).__name__,
+            clusterer=type(clusterer).__name__,
+            metadata_recorder=type(metadata_recorder).__name__,
+            writer=type(writer).__name__
+        )
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # MAIN ENTRY POINTS
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def run_batch(
+        self,
+        hotels_df: DataFrame,
+        pairs_df: DataFrame
+    ) -> Dict[str, Any]:
+        """
+        Run batch clustering pipeline
+        
+        Processes hotels and pairs through entire pipeline:
+        1. Score pairs
+        2. Detect conflicts
+        3. Create clusters
+        4. Record metadata
+        5. Write results
+        
+        Args:
+            hotels_df: DataFrame with hotel data
+                - id (primary key)
+                - name, address, phone, email, etc.
+            
+            pairs_df: DataFrame with hotel pairs to compare
+                - id_i, id_j
+                - 8 signal columns (geo_distance_km, name_score_sbert, etc.)
+        
+        Returns:
+            Dict with results:
+            {
+                'scored_pairs': DataFrame (with composite_score, etc.),
+                'conflicts': DataFrame (pairs with conflicts),
+                'clusters': DataFrame (cluster assignments),
+                'metadata': Dict (statistics),
+                'status': 'SUCCESS' or 'FAILED'
+            }
+        """
+        try:
+            self.logger.info(
+                "Starting batch clustering pipeline",
+                hotel_count=hotels_df.count(),
+                pair_count=pairs_df.count()
+            )
+            
+            # ═════════════════════════════════════════════════════════════
+            # PHASE 1: SCORE PAIRS
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info("PHASE 1: Scoring pairs...")
+            scored_pairs_df = self._phase_score(pairs_df)
+            
+            # ═════════════════════════════════════════════════════════════
+            # PHASE 2: DETECT CONFLICTS
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info("PHASE 2: Detecting conflicts...")
+            conflicts_df = self._phase_detect_conflicts(scored_pairs_df)
+            
+            # ═════════════════════════════════════════════════════════════
+            # PHASE 3: CREATE CLUSTERS
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info("PHASE 3: Creating clusters...")
+            clusters_df = self._phase_cluster(scored_pairs_df)
+            
+            # ═════════════════════════════════════════════════════════════
+            # PHASE 4: RECORD METADATA
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info("PHASE 4: Recording metadata...")
+            metadata = self._phase_metadata(
+                clusters_df,
+                scored_pairs_df,
+                conflicts_df
+            )
+            
+            # ═════════════════════════════════════════════════════════════
+            # PHASE 5: WRITE RESULTS
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info("PHASE 5: Writing results...")
+            self._phase_write(scored_pairs_df, clusters_df, metadata)
+            
+            # ═════════════════════════════════════════════════════════════
+            # SUCCESS
+            # ═════════════════════════════════════════════════════════════
+            
+            self.logger.info(
+                "Batch clustering pipeline completed",
+                status="SUCCESS",
+                clusters=clusters_df.count(),
+                conflicts=conflicts_df.filter("has_conflict").count()
+            )
+            
+            return {
+                'scored_pairs': scored_pairs_df,
+                'conflicts': conflicts_df,
+                'clusters': clusters_df,
+                'metadata': metadata,
+                'status': 'SUCCESS'
+            }
+        
+        except Exception as e:
+            self.logger.error(f"Pipeline failed: {str(e)}")
+            return {
+                'scored_pairs': None,
+                'conflicts': None,
+                'clusters': None,
+                'metadata': None,
+                'status': 'FAILED',
+                'error': str(e)
+            }
+    
+    def run_streaming(self, pairs_stream):
+        """
+        Run streaming clustering pipeline
+        
+        TODO: Implement streaming mode
+        Processes incoming pairs in real-time batches
+        """
+        raise NotImplementedError("Streaming mode not yet implemented")
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # PIPELINE PHASES (Private Methods)
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def _phase_score(self, pairs_df: DataFrame) -> DataFrame:
+        """
+        PHASE 1: Score all pairs
+        
+        Input: pairs_df with 8 signals
+        Output: scored_pairs_df with composite_score, confidence_level, etc.
+        """
+        self.logger.debug(
+            "Scoring pairs",
+            input_rows=pairs_df.count()
+        )
+        
+        scored_df = self.scorer.score(pairs_df)
+        
+        score_count = scored_df.count()
+        
+        self.logger.info(
+            "Pairs scored",
+            total=score_count,
+            high_conf=scored_df.filter("confidence_level = 'HIGH'").count(),
+            medium_conf=scored_df.filter("confidence_level = 'MEDIUM'").count(),
+            low_conf=scored_df.filter("confidence_level = 'LOW'").count(),
+            uncertain=scored_df.filter("confidence_level = 'UNCERTAIN'").count()
+        )
+        
+        return scored_df
+    
+    def _phase_detect_conflicts(self, scored_pairs_df: DataFrame) -> DataFrame:
+        """
+        PHASE 2: Detect conflicts in scored pairs
+        
+        Input: scored_pairs_df
+        Output: pairs with conflict flags (has_conflict, conflict_reason)
+        """
+        self.logger.debug("Detecting conflicts in pairs")
+        
+        conflicts_df = self.conflict_detector.detect_conflicts(scored_pairs_df)
+        
+        conflicts_count = conflicts_df.filter("has_conflict").count()
+        
+        self.logger.info(
+            "Conflict detection complete",
+            conflicts_found=conflicts_count,
+            valid_pairs=conflicts_df.filter("not has_conflict").count()
+        )
+        
+        return conflicts_df
+    
+    def _phase_cluster(self, scored_pairs_df: DataFrame) -> DataFrame:
+        """
+        PHASE 3: Create clusters from scored pairs
+        
+        Input: scored_pairs_df
+        Output: clusters_df with cluster assignments (id, cluster_id, is_representative)
+        """
+        self.logger.debug("Creating clusters")
+        
+        clusters_df = self.clusterer.cluster(scored_pairs_df)
+        
+        cluster_count = clusters_df.select("cluster_id").distinct().count()
+        
+        self.logger.info(
+            "Clustering complete",
+            total_hotels=clusters_df.count(),
+            total_clusters=cluster_count,
+            avg_cluster_size=clusters_df.count() / max(cluster_count, 1)
+        )
+        
+        return clusters_df
+    
+    def _phase_metadata(
+        self,
+        clusters_df: DataFrame,
+        scored_pairs_df: DataFrame,
+        conflicts_df: DataFrame
+    ) -> Dict[str, Any]:
+        """
+        PHASE 4: Record metadata about the clustering
+        
+        Collects statistics and metrics
+        """
+        self.logger.debug("Recording metadata")
+        
+        metadata = self.metadata_recorder.record_metadata(
+            clusters_df=clusters_df,
+            scored_pairs_df=scored_pairs_df,
+            conflicts_df=conflicts_df
+        )
+        
+        self.logger.info(
+            "Metadata recorded",
+            metrics_collected=len(metadata),
+            timestamp=metadata.get('processing_timestamp')
+        )
+        
+        return metadata
+    
+    def _phase_write(
+        self,
+        scored_pairs_df: DataFrame,
+        clusters_df: DataFrame,
+        metadata: Dict[str, Any]
+    ) -> None:
+        """
+        PHASE 5: Write results to storage
+        
+        Saves clusters, scored pairs, and metadata
+        """
+        self.logger.debug("Writing results to storage")
+        
+        try:
+            self.writer.write_clusters(clusters_df)
+            self.writer.write_scored_pairs(scored_pairs_df)
+            self.writer.write_metadata(metadata)
+            
+            self.logger.info(
+                "Results written successfully",
+                clusters=clusters_df.count(),
+                pairs=scored_pairs_df.count()
+            )
+        
+        except Exception as e:
+            self.logger.error(f"Write failed: {str(e)}")
+            raise
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # UTILITY METHODS
+    # ════════════════════════════════════════════════════════════════════════
+    
+    def get_status(self) -> str:
+        """Get orchestrator status"""
+        return "INITIALIZED" if self._is_initialized else "NOT_INITIALIZED"
+    
+    def health_check(self) -> bool:
+        """Verify all services are ready"""
+        try:
+            assert self.scorer is not None, "Scorer not initialized"
+            assert self.conflict_detector is not None, "Conflict detector not initialized"
+            assert self.clusterer is not None, "Clusterer not initialized"
+            assert self.metadata_recorder is not None, "Metadata recorder not initialized"
+            assert self.writer is not None, "Writer not initialized"
+            assert self.logger is not None, "Logger not initialized"
+            
+            self.logger.info("Health check PASSED - all services ready")
+            return True
+        
+        except AssertionError as e:
+            self.logger.error(f"Health check FAILED: {str(e)}")
+            return False
