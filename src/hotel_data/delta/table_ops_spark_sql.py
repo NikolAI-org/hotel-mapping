@@ -26,7 +26,7 @@ spark = (
     .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
     # ---- S3/MinIO config ----
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+    .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
     .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -68,16 +68,9 @@ manager = DeltaTableManager(
 hotel_pair = manager.read_table(TABLE_HOTELS_PAIRS_NAME)
 hotel_pair.show(5, truncate=False)
 
-from pyspark.sql.functions import col
-df_invalid = hotel_pair.filter(
-    (col("normalized_name_score_sbert") < 0) |
-    (col("normalized_name_score_sbert") > 1)
-)
-
-df_invalid.show(truncate=False)
 
 # Optional fallback: direct path read (escape hatch)
-# df_fallback = spark.read.format("delta").load(
-#     f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/{TABLE_HOTELS_NAME}"
-# )
-# df_fallback.show(5)
+df_fallback = spark.read.format("delta").load(
+    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/06_final_clusters"
+)
+df_fallback.show(5)

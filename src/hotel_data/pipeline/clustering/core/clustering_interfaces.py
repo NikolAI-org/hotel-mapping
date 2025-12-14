@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from pyspark.sql import DataFrame
 
 from hotel_data.config.scoring_config import HotelClusteringConfig
@@ -37,12 +37,20 @@ class ScoringStrategy(ABC):
 
 class ConflictDetectionStrategy(ABC):
     """
-    Interface for detecting conflicts in clustering
+    Interface for detecting and resolving conflicts in clustering
     
     A conflict occurs when:
-    - Hotel A matches with Hotel B
-    - Hotel B matches with Hotel C
-    - But Hotel A does NOT match Hotel C (transitive property violated)
+    - Hotel A matches with Hotel B (score >= threshold)
+    - Hotel B matches with Hotel C (score >= threshold)
+    - But Hotel A does NOT match Hotel C (score < threshold)
+    
+    This violates the transitive property of clustering.
+    
+    Example:
+        A ← confidence: 0.9 → B ← confidence: 0.85 → C
+        A ← confidence: 0.3 → C  (CONFLICT!)
+        
+        Reason: A~B and B~C should imply A~C
     """
     
     @abstractmethod
@@ -52,17 +60,62 @@ class ConflictDetectionStrategy(ABC):
         
         Args:
             scored_pairs_df: DataFrame with columns:
-                - id_i, id_j
-                - composite_score
-                - confidence_level
-                - meets_exclusion_rules
+                - id_i, id_j (hotel IDs)
+                - composite_score (0-1)
+                - confidence_level (HIGH/MEDIUM/LOW/UNCERTAIN)
+                - meets_exclusion_rules (boolean)
         
         Returns:
             DataFrame with columns:
                 - id_i, id_j
-                - has_conflict (boolean)
-                - conflict_reason (string)
-                - conflicting_pair (struct)
+                - composite_score
+                - confidence_level
+                - meets_exclusion_rules
+                - has_conflict (boolean) ← NEW!
+                - conflict_reason (string) ← NEW!
+                - conflict_type (TRANSITIVE/CHAIN/etc) ← NEW!
+                - conflicting_path (struct) ← NEW!
+                - severity (0-1) ← NEW!
+        """
+        pass
+    
+    @abstractmethod
+    def resolve_conflicts(self, pairs_with_conflicts_df: DataFrame) -> Tuple[DataFrame, Dict[str, Any]]:
+        """
+        Resolve detected conflicts by removing or modifying pairs
+        
+        Strategies:
+        1. Remove lowest-confidence pair
+        2. Remove all pairs in conflict
+        3. Adjust confidence levels
+        4. Break chain at weakest link
+        
+        Args:
+            pairs_with_conflicts_df: DataFrame with conflict flags
+        
+        Returns:
+            DataFrame with conflicts resolved (has_conflict = False)
+        """
+        pass
+    
+    @abstractmethod
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get conflict detection statistics
+        
+        Returns:
+            {
+                'total_pairs': int,
+                'conflicts_detected': int,
+                'conflict_types': {
+                    'transitive': int,
+                    'chain': int,
+                    ...
+                },
+                'average_severity': float,
+                'chains_found': int,
+                'longest_chain_length': int
+            }
         """
         pass
 
@@ -99,7 +152,7 @@ class MetadataRecorder(ABC):
     """Interface for recording clustering metadata"""
     
     @abstractmethod
-    def record_metadata(
+    def get_metrics(
         self,
         clusters_df: DataFrame,
         scored_pairs_df: DataFrame,
@@ -123,7 +176,10 @@ class MetadataRecorder(ABC):
         pass
     
     @abstractmethod
-    def get_metrics(self) -> Dict[str, Any]:
+    def record_metadata(self, 
+        scored_pairs_df: DataFrame,
+        clusters_df: DataFrame,
+        metadata: Dict[str, Any]) -> None:
         """Get collected metrics"""
         pass
 

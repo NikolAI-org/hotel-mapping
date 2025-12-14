@@ -270,6 +270,16 @@ class CompositeScoringStrategy(ScoringStrategy):
         
         df = df.withColumn("confidence_level", confidence_expr)
         
+        confidence_rank = (
+            when(col("confidence_level") == "HIGH", 3)
+            .when(col("confidence_level") == "MEDIUM", 2)
+            .when(col("confidence_level") == "LOW", 1)
+            .otherwise(0)
+        )
+
+        df = df.withColumn("confidence_rank", confidence_rank)
+
+        
         individual_scores_expr = F.create_map(
             *[item for pair in [(lit(col_name), col(col_name))
               for col_name in self.SIGNAL_COLUMNS] for item in pair]

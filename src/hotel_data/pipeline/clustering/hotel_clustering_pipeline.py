@@ -40,7 +40,7 @@ def main():
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -127,22 +127,29 @@ def main():
     
     print("\n[PHASE 6] Displaying results...")
     
+    print("\n--- SCORED PAIRS SAMPLE ---")
     results['scored_pairs'].select(
         "id_i", "id_j",
         "composite_score",
         "confidence_level"
     ).show(10)
-    
+
+    print("\n--- CLUSTERS SAMPLE ---")
     results['clusters'].select(
-        "id",
+        "id_i", "id_j",
         "cluster_id",
-        "cluster_size",
-        "is_representative"
+        "composite_score"
     ).show(10)
     
+    print("\n--- CLUSTER STATISTICS ---")
+    print(f"Total unique clusters: {results['clusters'].select('cluster_id').distinct().count()}")
+    print(f"Total pairs in clusters: {results['clusters'].count()}")
+    print(f"Metadata: {results['metadata']}")
+
     print("\n" + "=" * 70)
     print("✅ PIPELINE COMPLETED SUCCESSFULLY")
     print("=" * 70)
+
 
 if __name__ == "__main__":
     main()

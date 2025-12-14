@@ -180,12 +180,14 @@ class DependencyContainer:
         config = DependencyContainer.get_config()
         logger = DependencyContainer.get_logger()
         
-        # from hotel_data.pipeline.clustering.services import TransitiveConflictDetector
-        from hotel_data.pipeline.clustering.services.stub_services import StubConflictDetector
+        from hotel_data.pipeline.clustering.services.conflict_service import TransitiveConflictDetector
         
-        return StubConflictDetector(
-            match_threshold=config.scoring.thresholds.get('medium_confidence', 0.70),
-            logger=logger
+        return TransitiveConflictDetector(
+            logger=logger,
+            confidence_threshold=config.scoring.thresholds.get('medium_confidence', 0.70),
+            conflict_tolerance=0.15,  # 15% score drop tolerance
+            max_chain_length=3,  # Prevent chains longer than 3
+            resolution_strategy="remove_weakest"  # Default strategy
         )
     
     @staticmethod
@@ -196,9 +198,14 @@ class DependencyContainer:
         
         # from services.clustering_service import UnionFindClusteringStrategy
         
-        from hotel_data.pipeline.clustering.services.stub_services import StubClusterer
+        # from hotel_data.pipeline.clustering.services.stub_services import StubClusterer
         
-        return StubClusterer(
+        # return StubClusterer(
+        #     config=config.clustering,
+        #     logger=logger
+        # )
+        from hotel_data.pipeline.clustering.services.clustering_service import UnionFindClusteringStrategy
+        return UnionFindClusteringStrategy(
             config=config.clustering,
             logger=logger
         )
@@ -206,14 +213,15 @@ class DependencyContainer:
     @staticmethod
     def get_metadata_recorder():
         """Factory method for metadata recorder"""
-        config = DependencyContainer.get_config()
+        spark = DependencyContainer.get_spark()
         logger = DependencyContainer.get_logger()
+        writer = DependencyContainer.get_output_writer("all")
         
-        # from services.metadata_service import ComprehensiveMetadataRecorder
-        from hotel_data.pipeline.clustering.services.stub_services import StubMetadataRecorder
+        from hotel_data.pipeline.clustering.services.metadata_recorder import ComprehensiveMetadataRecorder
         
-        return StubMetadataRecorder(
-            config=config,
+        return ComprehensiveMetadataRecorder(
+            writer=writer,
+            spark=spark,
             logger=logger
         )
     
@@ -240,35 +248,110 @@ class DependencyContainer:
     
     @staticmethod
     def get_orchestrator():
-        """
-        Factory method: Creates fully wired HotelClusteringOrchestrator
-        
-        Returns all service dependencies:
-            - scorer (ScoringStrategy)
-            - conflict_detector (ConflictDetectionStrategy)
-            - clusterer (ClusteringStrategy)
-            - metadata_recorder (MetadataRecorder)
-            - writer (ClusterWriter)
-            - logger (Logger)
-        """
+        """Factory for HotelClusteringOrchestrator"""
         logger = DependencyContainer.get_logger()
         
         from hotel_data.pipeline.clustering.services.orchestrator import HotelClusteringOrchestrator
-        
-        logger.info("Creating HotelClusteringOrchestrator...")
         
         orchestrator = HotelClusteringOrchestrator(
             scorer=DependencyContainer.get_scoring_service(),
             conflict_detector=DependencyContainer.get_conflict_detector(),
             clusterer=DependencyContainer.get_clusterer(),
             metadata_recorder=DependencyContainer.get_metadata_recorder(),
-            writer=DependencyContainer.get_cluster_writer(),
+            writer=DependencyContainer.get_output_writer("all"),  # ← Unified!
             logger=logger
         )
         
-        logger.info("Orchestrator created successfully")
+        logger.info(
+            "HotelClusteringOrchestrator created",
+            writer_type="all"
+        )
+        
         return orchestrator
     
+    @staticmethod
+    def get_delta_table_manager():
+        """Factory for DeltaTableManager"""
+        
+        spark = DependencyContainer.get_spark()
+        config = DependencyContainer.get_config()
+        logger = DependencyContainer.get_logger()
+        
+        from hotel_data.delta.delta_table_manager import DeltaTableManager
+        
+        # Access config attributes, not dict keys
+        catalog_name = getattr(config.delta_lake, 'catalog_name', 'spark_catalog')
+        schema_name = getattr(config.delta_lake, 'schema_name', 'default')
+        base_path = getattr(config.delta_lake, 'base_path', 'delta_lake/')
+        
+        logger.debug(
+            "Creating DeltaTableManager",
+            catalog=catalog_name,
+            schema=schema_name,
+            base_path=base_path
+        )
+        
+        return DeltaTableManager(
+            spark=spark,
+            catalog_name=catalog_name,
+            schema_name=schema_name,
+            base_path=base_path
+        )
+    
+    @staticmethod
+    def get_output_writer(writer_type: str = "all", level: str = "delta"):
+        """
+        Factory for output writers with composition
+        
+        Args:
+            writer_type: "delta", "debug", "cluster", or "all"
+            level: "delta" (default) or "direct" (use manager directly)
+        
+        Returns:
+            TableIO implementation (possibly decorated)
+        
+        Examples:
+            get_output_writer("all") → DeltaTableIO + DebugIO + ClusterIO
+            get_output_writer("debug") → DeltaTableIO + DebugIO
+            get_output_writer("delta") → DeltaTableIO only
+        """
+        logger = DependencyContainer.get_logger()
+        
+        # Get DeltaTableManager
+        delta_manager = DependencyContainer.get_delta_table_manager()
+        
+        # Create base adapter
+        from hotel_data.infrastructure.adapter.delta_table_io import DeltaTableIO
+        base_writer = DeltaTableIO(
+            delta_manager=delta_manager,
+            logger=logger,
+            metadata_table="_write_metadata"
+        )
+        
+        # Apply decorators based on type
+        if writer_type == "delta":
+            return base_writer
+        
+        elif writer_type == "debug":
+            from hotel_data.infrastructure.decorator.debug_io import DebugIO
+            return DebugIO(base_writer, logger)
+        
+        elif writer_type == "cluster":
+            from hotel_data.infrastructure.decorator.cluster_io import ClusterIO
+            return ClusterIO(base_writer, logger)
+        
+        elif writer_type == "all":
+            from hotel_data.infrastructure.decorator.debug_io import DebugIO
+            from hotel_data.infrastructure.decorator.cluster_io import ClusterIO
+            
+            # Chain: DeltaTableIO → DebugIO → ClusterIO
+            debug_writer = DebugIO(base_writer, logger)
+            cluster_writer = ClusterIO(debug_writer, logger)
+            return cluster_writer
+        
+        else:
+            logger.warning(f"Unknown writer_type: {writer_type}, using delta")
+            return base_writer
     # ========================================================================
     # TESTING UTILITIES
     # ========================================================================

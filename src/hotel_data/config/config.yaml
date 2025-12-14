@@ -29,11 +29,45 @@ scoring:
     min_country_match: 1.0
     min_normalized_name_score: 0.3
 
+conflict_detection:
+  enabled: true
+  confidence_threshold: 0.70
+  conflict_tolerance: 0.15
+  max_chain_length: 3
+  resolution_strategy: "remove_weakest"  # Options: remove_weakest, remove_all, adjust_confidence, break_chain
+  
+  # Detection flags
+  detect_transitive: true
+  detect_chains: true
+  
+  # Reporting
+  report_details: true
+  save_conflicts: true
+
 clustering:
+  # PRE Existing (unchanged)
   min_score_threshold: 0.70
   max_cluster_size: null
+  # Existing (unchanged)
+  score_threshold: 0.65
+  confidence_threshold: 2
+  min_cluster_size: 1
+  
+  # NEW: Black hole detection
   enable_black_hole_prevention: true
+    # Default: true (enable detection)
+    # Set to false to disable BH detection
+    
   black_hole_max_threshold: 0.95
+    # Default: 0.95 (very high similarity)
+    # Pairs with score >= 0.95 flagged as potential black holes
+    # Increase to 0.98 for more strict BH detection
+    # Decrease to 0.90 for more lenient
+    
+  black_hole_min_size: 2
+    # Default: 2 (pair appears in 1-2 matches)
+    # Hotels appearing in <=2 pairs considered isolated
+    # Increase to 3 or 4 for more aggressive isolation
 
 streaming:
   enabled: false
@@ -45,3 +79,9 @@ logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   output_file: null
+
+delta_lake:
+  catalog_name: spark_catalog
+  schema_name: bronze
+  base_path: s3a://delta-bucket/hotel_data/delta
+

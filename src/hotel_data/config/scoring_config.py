@@ -126,6 +126,11 @@ class ClusteringConfig:
     max_cluster_size: Optional[int]  # e.g., None (no limit)
     enable_black_hole_prevention: bool  # e.g., True
     black_hole_max_threshold: float     # e.g., 0.95
+    score_threshold: float
+    confidence_threshold: float
+    min_cluster_size: int
+    black_hole_min_size: int
+    
     
     def validate(self) -> bool:
         """Validate clustering config"""
@@ -171,7 +176,19 @@ class LoggingConfig:
             format=config_dict["format"],
             output_file=config_dict.get("output_file"),
         )
-        
+
+@dataclass
+class DeltaConfig:
+    catalog_name: str
+    schema_name: str
+    base_path: str
+    
+    def validate(self) -> bool:
+        """Validate streaming config"""
+        if not self.catalog_name and not self.schema_name and not self.base_path:
+            raise ValueError("Catlog name, Schema name and/or base path is not defined for delta lake.")
+        return True
+
 @dataclass
 class HotelClusteringConfig:
     """
@@ -185,6 +202,7 @@ class HotelClusteringConfig:
     clustering: ClusteringConfig
     streaming: StreamingConfig
     logging: LoggingConfig
+    delta_lake: DeltaConfig
     
     def validate(self) -> bool:
         """Validate entire configuration"""
@@ -210,5 +228,6 @@ class HotelClusteringConfig:
             clustering=ClusteringConfig(**config_dict["clustering"]),
             streaming=StreamingConfig(**config_dict["streaming"]),
             logging=LoggingConfig.from_dict(config_dict["logging"]),
+            delta_lake=DeltaConfig(**config_dict["delta_lake"]),
         )
 
