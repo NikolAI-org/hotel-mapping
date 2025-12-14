@@ -118,75 +118,150 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
             # STEP 1: Filter pairs by thresholds
             # ═══════════════════════════════════════════════════════════════════
             
-            filtered_pairs = scored_pairs_df.filter(
-                (F.col("composite_score") >= self.score_threshold) &
-                (F.col("confidence_rank") >= self.confidence_threshold)
-            )
+             # Debug: Check what columns and data we have
+            self.logger.info(f"Input DataFrame columns: {scored_pairs_df.columns}")
+            self.logger.info(f"Input DataFrame count: {scored_pairs_df.count()}")
             
+            has_confidence_rank = "confidence_rank" in scored_pairs_df.columns
+            has_confidence_level = "confidence_level" in scored_pairs_df.columns
+            
+            if has_confidence_rank:
+                # Use confidence_rank directly (numeric)
+                filtered_pairs = scored_pairs_df.filter(
+                    (F.col("composite_score") >= self.score_threshold) &
+                    (F.col("confidence_rank") >= self.confidence_threshold)
+                )
+                confidence_col = "confidence_rank"
+                
+            elif has_confidence_level:
+                # Convert confidence_level (string) to numeric rank
+                scored_pairs_df = scored_pairs_df.withColumn(
+                    "confidence_rank",
+                    F.when(F.col("confidence_level") == "CERTAIN", 4)
+                        .when(F.col("confidence_level") == "HIGH", 3)
+                        .when(F.col("confidence_level") == "MEDIUM", 2)
+                        .when(F.col("confidence_level") == "LOW", 1)
+                        .otherwise(0)
+                )
+                
+                filtered_pairs = scored_pairs_df.filter(
+                    (F.col("composite_score") >= self.score_threshold) &
+                    (F.col("confidence_rank") >= self.confidence_threshold)
+                )
+                confidence_col = "confidence_rank"
+                
+            else:
+                raise ValueError(
+                    f"Neither 'confidence_rank' nor 'confidence_level' found! "
+                    f"Available: {scored_pairs_df.columns}"
+                )
+
             filtered_count = filtered_pairs.count()
             self.logger.info(
                 "Filtered pairs by threshold",
                 original=scored_pairs_df.count(),
                 filtered=filtered_count,
                 score_threshold=self.score_threshold,
-                confidence_threshold=self.confidence_threshold
+                confidence_threshold=self.confidence_threshold,
+                confidence_column=confidence_col
             )
+            
+            
+            # filtered_pairs = scored_pairs_df.filter(
+            #     (F.col("composite_score") >= self.score_threshold) &
+            #     (F.col("confidence_rank") >= self.confidence_threshold)
+            # )
+            
+            # filtered_count = filtered_pairs.count()
+            # self.logger.info(
+            #     "Filtered pairs by threshold",
+            #     original=scored_pairs_df.count(),
+            #     filtered=filtered_count,
+            #     score_threshold=self.score_threshold,
+            #     confidence_threshold=self.confidence_threshold
+            # )
+            
+            # if filtered_count == 0:
+            #     return self._create_identity_clusters(scored_pairs_df, has_existing_cluster_ids)
             
             if filtered_count == 0:
-                return self._create_identity_clusters(scored_pairs_df, has_existing_cluster_ids)
-            
-            # ═══════════════════════════════════════════════════════════════════
-            # STEP 2: BLACK HOLE DETECTION (BEFORE clustering)
-            # ═══════════════════════════════════════════════════════════════════
-            
-            black_hole_pairs = None
-            if self.enable_black_hole_prevention:
-                black_hole_pairs = self._detect_black_holes(
-                    filtered_pairs,
-                    self.black_hole_max_threshold
+                self.logger.warning(
+                    "⚠️ No pairs meet score/confidence threshold - using identity clusters",
+                    score_threshold=self.score_threshold,
+                    confidence_threshold=self.confidence_threshold
                 )
                 
-                if black_hole_pairs is not None:
-                    bh_count = black_hole_pairs.count()
-                    self.logger.info(
-                        "Black hole pairs detected",
-                        black_hole_pairs=bh_count,
-                        max_threshold=self.black_hole_max_threshold
+                # Show sample data to help understand why
+                self.logger.info("Sample confidence levels:")
+                scored_pairs_df.select("confidence_level", "composite_score").limit(5).show()
+                
+                # ✅ Create identity clusters for ALL hotels
+                parent_mapping = self._create_identity_parent_map(scored_pairs_df)
+                cluster_mapping = self._finalize_clusters(parent_mapping)
+                
+                self.logger.info(
+                    "✓ Identity clusters created",
+                    unique_clusters=cluster_mapping.select("cluster_id").distinct().count()
+                )
+                
+                # Continue to STEP 4 (assign cluster IDs)
+                # Skip STEP 2 (black hole detection) and STEP 3 (union-find)
+                black_hole_pairs = None
+                
+            else:
+                # ════════════════════════════════════════════════════════════════════
+                # STEP 2: BLACK HOLE DETECTION (BEFORE clustering)
+                # ════════════════════════════════════════════════════════════════════
+                
+                black_hole_pairs = None
+                
+                if self.enable_black_hole_prevention:
+                    black_hole_pairs = self._detect_black_holes(
+                        filtered_pairs,
+                        self.black_hole_max_threshold
                     )
                     
-                    # Remove black holes from clustering
-                    filtered_pairs = filtered_pairs.join(
-                        black_hole_pairs.select("bh_id_i", "bh_id_j"),
-                        (filtered_pairs["id_i"] == F.col("bh_id_i")) &
-                        (filtered_pairs["id_j"] == F.col("bh_id_j")),
-                        "left_anti"
-                    )
-                    
-                    self.logger.info(
-                        "Removed black holes from clustering",
-                        remaining_pairs=filtered_pairs.count()
-                    )
-            
-            # ═══════════════════════════════════════════════════════════════════
-            # STEP 3: UNION-FIND on remaining pairs
-            # ═══════════════════════════════════════════════════════════════════
-            
-            self.logger.info("filtered_pairs Schema")
-            self.logger.info(filtered_pairs.printSchema)
-            sorted_pairs = filtered_pairs.select(
-                F.col("id_i"),
-                F.col("id_j"),
-                F.col("composite_score"),
-                F.col("confidence_level")
-            ).orderBy(F.col("composite_score").desc())
-            
-            parent_mapping = self._union_find_spark(sorted_pairs)
-            cluster_mapping = self._finalize_clusters(parent_mapping)
-            
-            self.logger.info(
-                "Union-Find complete",
-                unique_clusters=cluster_mapping.select("cluster_id").distinct().count()
-            )
+                    if black_hole_pairs is not None:
+                        bh_count = black_hole_pairs.count()
+                        self.logger.info(
+                            "Black hole pairs detected",
+                            black_hole_pairs=bh_count,
+                            max_threshold=self.black_hole_max_threshold
+                        )
+                        
+                        # Remove black holes from clustering
+                        filtered_pairs = filtered_pairs.join(
+                            black_hole_pairs.select("bh_id_i", "bh_id_j"),
+                            (filtered_pairs["id_i"] == F.col("bh_id_i")) &
+                            (filtered_pairs["id_j"] == F.col("bh_id_j")),
+                            "left_anti"
+                        )
+                        
+                        self.logger.info(
+                            "Removed black holes from clustering",
+                            remaining_pairs=filtered_pairs.count()
+                        )
+                
+                # ════════════════════════════════════════════════════════════════════
+                # STEP 3: UNION-FIND on remaining pairs
+                # ════════════════════════════════════════════════════════════════════
+                
+                sorted_pairs = filtered_pairs.select(
+                    F.col("id_i"),
+                    F.col("id_j"),
+                    F.col("name_i"),
+                    F.col("name_j"),
+                    F.col("composite_score"),
+                    F.col("confidence_level")
+                ).orderBy(F.col("composite_score").desc())
+                
+                parent_mapping = self._union_find_spark(sorted_pairs)
+                cluster_mapping = self._finalize_clusters(parent_mapping)
+                
+                self.logger.info(
+                    "Union-Find complete",
+                    unique_clusters=cluster_mapping.select("cluster_id").distinct().count()
+                )
             
             # ═══════════════════════════════════════════════════════════════════
             # STEP 4: ASSIGN CLUSTER IDS to all pairs
@@ -194,7 +269,7 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
             
             # Start with original DataFrame
             result = scored_pairs_df
-            
+        
             # For id_i
             result = result.join(
                 cluster_mapping.select(
@@ -220,17 +295,16 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
             # ═══════════════════════════════════════════════════════════════════
             
             if has_existing_cluster_ids:
-                # Use existing cluster_id if not null, otherwise use new assignment
                 result = result.withColumn(
                     "cluster_id",
                     F.when(
                         F.col("cluster_id").isNotNull(),
-                        F.col("cluster_id")  # Keep existing
+                        F.col("cluster_id")
                     ).otherwise(
                         F.coalesce(
                             F.col("cluster_id_from_i"),
                             F.col("cluster_id_from_j"),
-                            F.col("id_i")  # Fallback
+                            F.col("id_i")
                         )
                     )
                 ).drop("cluster_id_from_i", "cluster_id_from_j")
@@ -240,7 +314,6 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
                     preserved=pre_assigned_count
                 )
             else:
-                # No pre-existing IDs, use new assignments
                 result = result.withColumn(
                     "cluster_id",
                     F.coalesce(
@@ -287,10 +360,12 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
                 raise ValueError("CRITICAL: cluster_id column not added!")
             
             null_cluster_count = result.filter(F.col("cluster_id").isNull()).count()
+            
             if null_cluster_count > 0:
                 self.logger.warning(
                     f"Found {null_cluster_count} pairs with null cluster_id, fixing..."
                 )
+                
                 result = result.withColumn(
                     "cluster_id",
                     F.when(
@@ -383,120 +458,223 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
         """
         Perform distributed Union-Find algorithm.
         
+        FIXED: Properly extract all unique hotel IDs from pairs_df
+        
         Returns parent mapping: hotel_id → parent
         """
-        spark = pairs_df.sparkSession
         
-        # Initialize
-        hotel_ids = pairs_df.select(F.col("id_i").alias("id")).union(
-            pairs_df.select(F.col("id_j").alias("id"))
-        ).distinct()
+        self.logger.debug("Starting Union-Find algorithm")
+        self.logger.debug(f"Input pairs_df schema: {pairs_df.columns}")
         
-        parent_map = hotel_ids.withColumn(
-            "parent",
-            F.col("id")
-        ).select(F.col("id").alias("hotel_id"), F.col("parent"))
+        # ✅ FIXED: Extract hotel IDs - verify columns exist first
+        try:
+            # Debug: Check what columns are actually in pairs_df
+            available_cols = pairs_df.columns
+            self.logger.info(f"Available columns in pairs_df: {available_cols}")
+            
+            # Check if id_i and id_j exist
+            if "id_i" not in available_cols or "id_j" not in available_cols:
+                self.logger.error(
+                    f"CRITICAL: id_i or id_j not found in pairs_df!",
+                    available_columns=available_cols
+                )
+                raise ValueError(
+                    f"id_i or id_j column not found. Available: {available_cols}"
+                )
+            
+            # Extract all unique hotel IDs from both id_i and id_j columns
+            self.logger.info("=========================")
+            self.logger.info("Pair_DF schema")
+            self.logger.info(pairs_df.printSchema())
+            self.logger.info("=========================")
+            hotel_ids = pairs_df.select(
+                F.col("name_i").alias("name"),
+                F.col("id_i").alias("id")
+            ).union(
+                pairs_df.select(F.col("name_j").alias("name"),
+                                F.col("id_j").alias("id")
+                                )
+            ).distinct()
+            
+            hotel_ids.show()
+            
+            hotel_ids_count = hotel_ids.count()
+            self.logger.info(f"Extracted {hotel_ids_count} unique hotel IDs")
+            
+            if hotel_ids_count == 0:
+                self.logger.error("CRITICAL: No hotel IDs extracted from pairs!")
+                raise ValueError("No hotel IDs found in pairs_df")
+            
+            # Initialize parent map: each hotel = own parent (initially)
+            parent_map = hotel_ids.withColumn(
+                "parent",
+                F.col("id")
+            ).select(
+                F.col("id").alias("hotel_id"),
+                F.col("parent")
+            )
+            
+            parent_map_count = parent_map.count()
+            self.logger.info(
+                f"✓ Initialized parent map",
+                hotel_count=parent_map_count
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize parent map: {str(e)}")
+            raise
+    
+        # ═══════════════════════════════════════════════════════════════════
+        # Iterative Union-Find with convergence check
+        # ═══════════════════════════════════════════════════════════════════
         
-        self.logger.info(f"Initialized parent map with {parent_map.count()} hotels")
-        
-        # Iterative union-find
         max_iterations = 100
         iteration = 0
         
         while iteration < max_iterations:
             iteration += 1
             
-            # Join pairs with parent map
-            updated = pairs_df.join(
-                parent_map,
-                pairs_df["id_i"] == parent_map["hotel_id"],
-                "left"
-            ).select(
-                pairs_df["id_i"],
-                pairs_df["id_j"],
-                F.col("parent").alias("parent_i")
-            )
-            
-            updated = updated.join(
-                parent_map,
-                updated["id_j"] == parent_map["hotel_id"],
-                "left"
-            ).select(
-                F.col("id_i"),
-                F.col("id_j"),
-                F.col("parent_i"),
-                F.col("parent").alias("parent_j")
-            )
-            
-            # Union: use minimum
-            updated = updated.withColumn(
-                "min_parent",
-                F.least(F.col("parent_i"), F.col("parent_j"))
-            )
-            
-            # Create updates
-            updates_i = updated.select(
-                F.col("parent_i").alias("hotel_id"),
-                F.col("min_parent").alias("new_parent")
-            ).distinct()
-            
-            updates_j = updated.select(
-                F.col("parent_j").alias("hotel_id"),
-                F.col("min_parent").alias("new_parent")
-            ).distinct()
-            
-            all_updates = updates_i.union(updates_j).distinct()
-            
-            # Apply updates
-            parent_map = parent_map.join(
-                all_updates,
-                parent_map["hotel_id"] == all_updates["hotel_id"],
-                "left"
-            ).select(
-                parent_map["hotel_id"],
-                F.when(
-                    all_updates["new_parent"].isNotNull(),
-                    F.least(parent_map["parent"], all_updates["new_parent"])
-                ).otherwise(parent_map["parent"]).alias("parent")
-            )
-            
-            # Check convergence
-            converged_count = parent_map.join(
-                parent_map.select(
-                    F.col("hotel_id").alias("h2"),
-                    F.col("parent").alias("p2")
-                ),
-                parent_map["parent"] == F.col("h2"),
-                "inner"
-            ).count()
-            
-            if converged_count == parent_map.count():
-                self.logger.info(f"Union-Find converged at iteration {iteration}")
-                break
-            
-            self.logger.debug(f"Union-Find iteration {iteration}")
+            try:
+                # Join pairs with parent map to get parents for both id_i and id_j
+                updated = pairs_df.join(
+                    parent_map,
+                    pairs_df["id_i"] == parent_map["hotel_id"],
+                    "left"
+                ).select(
+                    pairs_df["id_i"],
+                    pairs_df["id_j"],
+                    F.col("parent").alias("parent_i")
+                )
+                
+                updated = updated.join(
+                    parent_map,
+                    updated["id_j"] == parent_map["hotel_id"],
+                    "left"
+                ).select(
+                    F.col("id_i"),
+                    F.col("id_j"),
+                    F.col("parent_i"),
+                    F.col("parent").alias("parent_j")
+                )
+                
+                # Union: merge to minimum parent
+                updated = updated.withColumn(
+                    "min_parent",
+                    F.least(F.col("parent_i"), F.col("parent_j"))
+                )
+                
+                # Create update records
+                updates_i = updated.select(
+                    F.col("parent_i").alias("hotel_id"),
+                    F.col("min_parent").alias("new_parent")
+                ).distinct()
+                
+                updates_j = updated.select(
+                    F.col("parent_j").alias("hotel_id"),
+                    F.col("min_parent").alias("new_parent")
+                ).distinct()
+                
+                all_updates = updates_i.union(updates_j).distinct()
+                
+                # Apply updates to parent map
+                parent_map = parent_map.join(
+                    all_updates,
+                    parent_map["hotel_id"] == all_updates["hotel_id"],
+                    "left"
+                ).select(
+                    parent_map["hotel_id"],
+                    F.when(
+                        all_updates["new_parent"].isNotNull(),
+                        F.least(parent_map["parent"], all_updates["new_parent"])
+                    ).otherwise(parent_map["parent"]).alias("parent")
+                )
+                
+                # Check convergence: parent should point to itself for roots
+                converged_count = parent_map.join(
+                    parent_map.select(
+                        F.col("hotel_id").alias("h2"),
+                        F.col("parent").alias("p2")
+                    ),
+                    parent_map["parent"] == F.col("h2"),
+                    "inner"
+                ).count()
+                
+                if converged_count == parent_map_count:
+                    self.logger.info(f"✓ Union-Find converged at iteration {iteration}")
+                    break
+                
+                self.logger.debug(f"Union-Find iteration {iteration}")
+                
+            except Exception as e:
+                self.logger.error(f"Union-Find iteration {iteration} failed: {str(e)}")
+                raise
+        
+        if iteration == max_iterations:
+            self.logger.warning(f"⚠️ Union-Find did not converge after {max_iterations} iterations")
         
         return parent_map
+
     
     def _finalize_clusters(self, parent_map: DataFrame) -> DataFrame:
         """
-        Finalize cluster IDs using root parent.
+        Finalize cluster IDs: Map all hotels to their cluster's sequential ID.
+        
+        FIXED: Now generates proper CLUSTER_XXXXXX format
         """
-        roots = parent_map.filter(F.col("hotel_id") == F.col("parent"))
         
-        result = parent_map.join(
-            roots.select(
+        try:
+            # Find all unique roots (cluster representatives)
+            roots = parent_map.filter(F.col("hotel_id") == F.col("parent"))
+            unique_clusters = roots.count()
+            self.logger.info(f"Found {unique_clusters} unique cluster roots")
+            
+            # Assign sequential cluster IDs to roots
+            # Sorted by root_id for consistency across runs
+            window_spec = Window.orderBy(F.col("hotel_id"))
+            
+            cluster_mapping = roots.withColumn(
+                "seq_number",
+                F.row_number().over(window_spec)
+            ).select(
                 F.col("hotel_id").alias("root_id"),
-                F.col("parent").alias("root_parent")
-            ),
-            parent_map["parent"] == F.col("root_id"),
-            "left"
-        ).select(
-            parent_map["hotel_id"],
-            F.coalesce(F.col("root_parent"), parent_map["parent"]).alias("cluster_id")
-        )
-        
-        return result
+                F.col("parent").alias("root_parent"),
+                # ✅ FIXED: Add "CLUSTER_" prefix!
+                F.concat(
+                    F.lit("CLUSTER_"),                    # ✅ NOT EMPTY!
+                    F.lpad(F.col("seq_number"), 6, "0")
+                ).alias("cluster_id")
+            ).cache()
+            
+            self.logger.info(f"✓ Generated {cluster_mapping.count()} sequential cluster IDs")
+            
+            # Show sample
+            self.logger.debug("Sample cluster mapping:")
+            cluster_mapping.select("root_id", "cluster_id").limit(5).show(truncate=False)
+            
+            # Map all hotels to their cluster's sequential ID
+            result = parent_map.join(
+                cluster_mapping,
+                parent_map["parent"] == F.col("root_id"),
+                "left"
+            ).select(
+                parent_map["hotel_id"],
+                F.col("cluster_id")
+            )
+            
+            # Verify all have cluster IDs
+            null_count = result.filter(F.col("cluster_id").isNull()).count()
+            if null_count > 0:
+                self.logger.warning(f"⚠️ {null_count} hotels without cluster assignment!")
+            else:
+                self.logger.info("✓ All hotels successfully mapped to sequential cluster IDs")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Cluster finalization failed: {str(e)}")
+            raise
+
+
     
     def _create_identity_clusters(
         self,
@@ -504,22 +682,112 @@ class UnionFindClusteringStrategy(ClusteringStrategy):
         has_existing_ids: bool
     ) -> DataFrame:
         """
-        Create identity clusters (no pairs meet threshold).
+        Create identity clusters when no pairs meet threshold.
+        
+        FIXED: Now generates sequential CLUSTER_XXXXXX IDs instead of using id_i!
+        
+        Process:
+        1. Create parent map (each hotel = own parent)
+        2. Finalize clusters (assign sequential IDs: CLUSTER_000001, etc.)
+        3. Join back to original dataframe
+        
+        Args:
+            df: DataFrame with id_i, id_j columns
+            has_existing_ids: Whether cluster_id column already exists
+        
+        Returns:
+            DataFrame with proper sequential cluster_id values
         """
         self.logger.warning("Creating identity clusters: no pairs meet threshold")
-        self.logger.info(df.printSchema)
-        if has_existing_ids:
-            # Preserve existing, use id_i as fallback
-            return df.withColumn(
+        
+        try:
+            # Step 1: Create parent map where each hotel = own parent
+            parent_map = self._create_identity_parent_map(df)
+            
+            # Step 2: Finalize clusters - generates sequential CLUSTER_XXXXXX IDs
+            cluster_mapping = self._finalize_clusters(parent_map)
+            
+            self.logger.info(
+                f"Generated {cluster_mapping.select('cluster_id').distinct().count()} "
+                f"sequential cluster IDs for identity clusters"
+            )
+            
+            # Step 3: Join cluster IDs back to original dataframe
+            # Join on id_i
+            result = df.join(
+                cluster_mapping.select(
+                    F.col("hotel_id").alias("id_i_mapped"),
+                    F.col("cluster_id").alias("cluster_id_from_i")
+                ),
+                df["id_i"] == F.col("id_i_mapped"),
+                "left"
+            ).drop("id_i_mapped")
+            
+            # Join on id_j (for pairs where id_j should have cluster_id)
+            result = result.join(
+                cluster_mapping.select(
+                    F.col("hotel_id").alias("id_j_mapped"),
+                    F.col("cluster_id").alias("cluster_id_from_j")
+                ),
+                result["id_j"] == F.col("id_j_mapped"),
+                "left"
+            ).drop("id_j_mapped")
+            
+            # Step 4: Pick cluster_id (prefer id_i's cluster)
+            result = result.withColumn(
                 "cluster_id",
-                F.when(
-                    F.col("cluster_id").isNotNull(),
-                    F.col("cluster_id")
-                ).otherwise(F.col("id_i"))
-            ).withColumn("is_black_hole", F.lit(False))
-        else:
-            return df.withColumn(
-                "cluster_id",
-                F.col("id_i")
-            ).withColumn("is_black_hole", F.lit(False))
+                F.coalesce(
+                    F.col("cluster_id_from_i"),
+                    F.col("cluster_id_from_j")
+                )
+            ).drop("cluster_id_from_i", "cluster_id_from_j")
+            
+            # Step 5: Add is_black_hole flag
+            result = result.withColumn("is_black_hole", F.lit(False))
+            
+            # Verify all have cluster_ids
+            null_count = result.filter(F.col("cluster_id").isNull()).count()
+            if null_count > 0:
+                self.logger.warning(f"⚠️ {null_count} rows without cluster_id!")
+            else:
+                self.logger.info("✓ All rows assigned to sequential cluster IDs")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Identity cluster creation failed: {str(e)}")
+            raise
+
+    
+    
+    def _create_identity_parent_map(self, df: DataFrame) -> DataFrame:
+        """
+        Create parent map for identity clusters (no matching pairs).
+        
+        Each hotel becomes its own parent (singleton cluster).
+        Later, _finalize_clusters() will assign sequential CLUSTER_XXX IDs.
+        
+        Args:
+            df: DataFrame with id_i and id_j columns
+        
+        Returns:
+            DataFrame with [hotel_id, parent] columns where hotel_id == parent
+        """
+        # Extract all unique hotel IDs from both id_i and id_j columns
+        hotel_ids = df.select(F.col("id_i").alias("id")).union(
+            df.select(F.col("id_j").alias("id"))
+        ).distinct()
+        
+        # Create parent map: each hotel is its own parent
+        parent_map = hotel_ids.select(
+            F.col("id").alias("hotel_id"),
+            F.col("id").alias("parent")  # Each hotel = own parent
+        )
+        
+        self.logger.info(
+            f"Created identity parent map for {parent_map.count()} hotels"
+        )
+        
+        return parent_map
+
 

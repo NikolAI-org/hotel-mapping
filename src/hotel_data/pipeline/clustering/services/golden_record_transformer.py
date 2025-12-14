@@ -78,7 +78,7 @@ class GoldenRecordTransformer:
         
         # Check hotels table
         required_hotel_cols = {
-            'providerId', 'name', 'geoCode_lat', 'geoCode_long', 'combined_address'
+            'providerId', 'name', 'geoCode_lat', 'geoCode_long', 'combined_address', 'id'
         }
         hotels_cols = set(hotels_df.columns)
         missing_hotel = required_hotel_cols - hotels_cols
@@ -103,53 +103,43 @@ class GoldenRecordTransformer:
     ) -> DataFrame:
         """
         Extract all hotels in each cluster with their attributes
-        
         From clusters, we get id_i and id_j. We need to:
         1. Expand both to get all members
         2. Join with hotels table to get attributes
         """
         self.logger.debug("Extracting cluster members...")
-        
+
         # Filter out black holes if present
         clean_clusters = clusters_df
-        self.logger.info(clean_clusters.printSchema)
         if "is_black_hole" in clusters_df.columns:
             clean_clusters = clusters_df.filter(F.col("is_black_hole") != True)
-        
-        self.logger.info("=========================")
-        self.logger.info("Clean Cluster schema")
-        self.logger.info(clean_clusters.printSchema())
+
         # Get both id_i and id_j as members
         from_id_i = clean_clusters.select(
             F.col("cluster_id"),
             F.col("id_i").alias("hotel_id"),
-            F.col("name_i").alias("name"),
+            F.col("name_i").alias("cluster_name"),
             F.col("composite_score").alias("pair_score")
         )
-        
+
         from_id_j = clean_clusters.select(
             F.col("cluster_id"),
             F.col("id_j").alias("hotel_id"),
-            F.col("name_j").alias("name"),
+            F.col("name_j").alias("cluster_name"),
             F.col("composite_score").alias("pair_score")
         )
-        
+
         # Combine and deduplicate
         all_members = from_id_i.union(from_id_j).distinct()
-        
-        self.logger.info("==============================")
-        self.logger.info("Hotel DF Schema")
-        self.logger.info(hotels_df.printSchema())
-        self.logger.info("all_members DF Schema")
-        self.logger.info(all_members.printSchema())
-        self.logger.info("==============================")
-        
+
         # Join with hotels to get attributes
+        # CORRECTED: Keep hotel_id (which is the actual source ID from clusters)
+        # and alias the hotel table's id to something else if needed
         members_with_data = all_members.join(
             hotels_df.select(
-                F.col("id").alias("id"),
+                F.col("id").alias("hotel_pk_id"),  # CHANGED: Different name to avoid confusion
                 "providerId",
-                "name",
+                F.col("name").alias("hotel_name"),
                 "starRating",
                 "geoCode_lat",
                 "geoCode_long",
@@ -157,14 +147,14 @@ class GoldenRecordTransformer:
                 "contact_phones",
                 "contact_emails"
             ),
-            on="name",
+            on=F.col("hotel_id") == F.col("hotel_pk_id"),
             how="left"
-        )
-        
+        ).drop("hotel_pk_id")  # Drop the redundant PK after join
+
         member_count = members_with_data.count()
         self.logger.debug(f"Extracted {member_count} cluster members")
-        
         return members_with_data
+
     
     def _identify_cluster_masters(
         self,
@@ -172,16 +162,16 @@ class GoldenRecordTransformer:
     ) -> DataFrame:
         """
         Identify the master (representative) hotel for each cluster
-        
         Master = highest average composite_score within cluster
         """
         self.logger.debug("Identifying cluster masters...")
-        
+
         # Calculate average score per hotel per cluster
+        # FIX: Use 'hotel_name' instead of 'name'
         avg_scores = cluster_members.groupBy("cluster_id", "hotel_id").agg(
             F.avg("pair_score").alias("avg_score"),
             F.first("providerId").alias("provider_id"),
-            F.first("name").alias("primary_name"),
+            F.first("hotel_name").alias("primary_name"),  # CHANGED: Reference 'hotel_name'
             F.first("starRating").alias("primary_star_rating"),
             F.first("geoCode_lat").alias("lat"),
             F.first("geoCode_long").alias("lon"),
@@ -189,7 +179,7 @@ class GoldenRecordTransformer:
             F.first("contact_phones").alias("phones"),
             F.first("contact_emails").alias("emails")
         )
-        
+
         # Select highest-scoring member as master
         masters = avg_scores.withColumn(
             "rank",
@@ -198,11 +188,11 @@ class GoldenRecordTransformer:
                 .orderBy(F.col("avg_score").desc())
             )
         ).filter(F.col("rank") == 1).drop("rank", "avg_score")
-        
+
         master_count = masters.count()
         self.logger.debug(f"Identified {master_count} cluster masters")
-        
         return masters
+
     
     def _aggregate_cluster_data(
         self,
@@ -210,9 +200,8 @@ class GoldenRecordTransformer:
     ) -> DataFrame:
         """
         Aggregate all data within each cluster
-        
         Collects:
-        - All original_ids
+        - All original_ids (hotel_id from source clusters)
         - All provider_ids
         - All names
         - All phones
@@ -220,27 +209,22 @@ class GoldenRecordTransformer:
         - Average latitude/longitude (centroid)
         """
         self.logger.debug("Aggregating cluster data...")
-        
+
         # Remove rows with null hotel_id (failed joins)
         valid_members = cluster_members.filter(F.col("hotel_id").isNotNull())
-        
-        self.logger.info(valid_members.printSchema())
-        
+
         aggregated = valid_members.groupBy("cluster_id").agg(
-            # Collect IDs
-            F.collect_set(F.col("id")).alias("all_source_ids"),
+            # Collect IDs - hotel_id is the original source ID from clusters
+            F.collect_set(F.col("hotel_id")).alias("all_source_ids"),
             F.collect_set(F.col("providerId")).alias("all_provider_ids"),
-            
             # Collect attributes
-            F.collect_set(F.col("name")).alias("all_names_reported"),
+            F.collect_set(F.col("hotel_name")).alias("all_names_reported"),
             F.collect_set(F.col("contact_phones")).alias("all_phones"),
             F.collect_set(F.col("contact_emails")).alias("all_emails"),
             F.collect_set(F.col("combined_address")).alias("all_address"),
-            
             # Calculate centroid
             F.avg(F.col("geoCode_lat")).alias("centroid_lat"),
             F.avg(F.col("geoCode_long")).alias("centroid_lon"),
-            
             # Stats
             F.count(F.col("hotel_id")).alias("cluster_size")
         ).withColumn(
@@ -260,10 +244,9 @@ class GoldenRecordTransformer:
             "all_emails",
             F.array_remove(F.col("all_emails"), None)
         )
-        
+
         agg_count = aggregated.count()
         self.logger.debug(f"Aggregated {agg_count} clusters")
-        
         return aggregated
     
     def _build_golden_records(
@@ -453,14 +436,11 @@ class GoldenRecordTransformer:
         self.logger.info(f"Writing Golden Records to {location}...")
         
         try:
-            self.logger.info("============================")
-            self.logger.info("Golden Record schema")
-            self.logger.info(golden_records.printSchema())
-            self.logger.info("============================")
-            # self.writer.write(
-            #     golden_records,
-            #     "09_golden_records"
-            # )
+
+            self.writer.write(
+                golden_records,
+                "09_golden_records"
+            )
             # golden_records.write \
             #     .format("delta") \
             #     .mode(mode) \

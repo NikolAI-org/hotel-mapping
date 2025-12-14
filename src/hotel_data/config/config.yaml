@@ -46,10 +46,10 @@ conflict_detection:
 
 clustering:
   # PRE Existing (unchanged)
-  min_score_threshold: 0.70
+  min_score_threshold: 0.50
   max_cluster_size: null
   # Existing (unchanged)
-  score_threshold: 0.65
+  score_threshold: 0.50
   confidence_threshold: 2
   min_cluster_size: 1
   

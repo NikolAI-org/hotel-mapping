@@ -67,7 +67,6 @@ def build_golden_records():
     clusters_df = manager.read_table("06_final_clusters")  # or read from path
     if clusters_df is not None:
         logger.info("Cluster DF schema")
-        clusters_df.printSchema()
     logger.info(f"  Hotels: {hotels_df.count()}")
     logger.info(f"  Clusters: {clusters_df.count()}")
     

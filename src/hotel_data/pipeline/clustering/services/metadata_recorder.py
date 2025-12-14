@@ -121,8 +121,6 @@ class ComprehensiveMetadataRecorder(MetadataRecorder):
             # ════════════════════════════════════════════════════════════════════
             
             self.logger.debug(f"Writing {clusters_df.count()} clusters...")
-            self.logger.info(f"06_final_clusters schema")
-            self.logger.info(clusters_df.printSchema)
             self.writer.write(
                 clusters_df,
                 "06_final_clusters",

@@ -65,12 +65,13 @@ manager = DeltaTableManager(
     base_path=BASE_DELTA_PATH,
 )
 
-hotel_pair = manager.read_table(TABLE_HOTELS_PAIRS_NAME)
-hotel_pair.show(5, truncate=False)
+# hotel_pair = manager.read_table(TABLE_HOTELS_PAIRS_NAME)
+# hotel_pair.show(5, truncate=False)
 
 
 # Optional fallback: direct path read (escape hatch)
 df_fallback = spark.read.format("delta").load(
-    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/06_final_clusters"
+    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/hotels"
 )
 df_fallback.show(5)
+df_fallback.printSchema()
