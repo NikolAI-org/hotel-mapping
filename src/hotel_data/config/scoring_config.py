@@ -21,6 +21,8 @@ class ScoringConfig:
     #   'low_confidence': 0.55
     # }
     
+    comparators: Dict[str, float]
+    
     exclusion_rules: Dict[str, float]
     # Example:
     # {

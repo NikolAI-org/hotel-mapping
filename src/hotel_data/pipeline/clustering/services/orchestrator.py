@@ -122,29 +122,28 @@ class HotelClusteringOrchestrator:
             self.logger.info("PHASE 1: Scoring pairs...")
             scored_pairs_df = self._phase_score(pairs_df)
             self.logger.debug(f"Scored {scored_pairs_df.count()} pairs")
-
             
             # ═════════════════════════════════════════════════════════════
             # PHASE 2: DETECT CONFLICTS
             # ═════════════════════════════════════════════════════════════
             
-            self.logger.info("PHASE 2: Detecting conflicts...")
-            conflicts_df = self._phase_detect_conflicts(scored_pairs_df)
-            self.logger.debug(f"Detected conflicts in {conflicts_df.count()} pairs")
+            # self.logger.info("PHASE 2: Detecting conflicts...")
+            # conflicts_df = self._phase_detect_conflicts(scored_pairs_df)
+            # self.logger.debug(f"Detected conflicts in {conflicts_df.count()} pairs")
 
             
             # ═════════════════════════════════════════════════════════════
             # PHASE 3: Conflict Resolution
             # ═════════════════════════════════════════════════════════════
-            clean_pairs = self._phase_conflict_resolution(conflicts_df)
-            self.logger.debug(f"Conflicts resolution in {clean_pairs.count()} pairs")
+            # clean_pairs = self._phase_conflict_resolution(conflicts_df)
+            # self.logger.debug(f"Conflicts resolution in {clean_pairs.count()} pairs")
             
             # ═════════════════════════════════════════════════════════════
             # PHASE 4: CREATE CLUSTERS
             # ═════════════════════════════════════════════════════════════
             
-            self.logger.info("PHASE 3: Creating clusters...")
-            clusters_df = self._phase_cluster(scored_pairs_df)
+            # self.logger.info("PHASE 3: Creating clusters...")
+            clusters_df = self._phase_cluster(hotels_df, scored_pairs_df)
             self.logger.debug(f"Created {clusters_df.count()} clusters")
 
             
@@ -152,37 +151,37 @@ class HotelClusteringOrchestrator:
             # PHASE 5: RECORD METADATA
             # ═════════════════════════════════════════════════════════════
             
-            self.logger.info("PHASE 4: Recording metadata...")
-            metadata = self._phase_metadata(
-                clusters_df,
-                scored_pairs_df,
-                conflicts_df
-            )
+            # self.logger.info("PHASE 4: Recording metadata...")
+            # metadata = self._phase_metadata(
+            #     clusters_df,
+            #     scored_pairs_df,
+            #     None
+            # )
             
             # ═════════════════════════════════════════════════════════════
             # PHASE 5: WRITE RESULTS
             # ═════════════════════════════════════════════════════════════
             
             self.logger.info("PHASE 5: Writing results...")
-            self._phase_write(clusters_df, scored_pairs_df, metadata)
+            self._phase_write(scored_pairs_df, clusters_df, None)
 
             
             # ═════════════════════════════════════════════════════════════
             # SUCCESS
             # ═════════════════════════════════════════════════════════════
             
-            self.logger.info(
-                "Batch clustering pipeline completed",
-                status="SUCCESS",
-                clusters=clusters_df.count(),
-                conflicts=conflicts_df.filter("has_conflict").count()
-            )
+            # self.logger.info(
+            #     "Batch clustering pipeline completed",
+            #     status="SUCCESS",
+            #     clusters=clusters_df.count(),
+            #     conflicts=conflicts_df.filter("has_conflict").count()
+            # )
             
             return {
                 'scored_pairs': scored_pairs_df,
-                'conflicts': conflicts_df,
+                # 'conflicts': conflicts_df,
                 'clusters': clusters_df,
-                'metadata': metadata,
+                # 'metadata': metadata,
                 'status': 'SUCCESS'
             }
         
@@ -228,11 +227,11 @@ class HotelClusteringOrchestrator:
         
         self.logger.info(
             "Pairs scored",
-            total=score_count,
-            high_conf=scored_df.filter("confidence_level = 'HIGH'").count(),
-            medium_conf=scored_df.filter("confidence_level = 'MEDIUM'").count(),
-            low_conf=scored_df.filter("confidence_level = 'LOW'").count(),
-            uncertain=scored_df.filter("confidence_level = 'UNCERTAIN'").count()
+            total=score_count
+            # high_conf=scored_df.filter("confidence_level = 'HIGH'").count(),
+            # medium_conf=scored_df.filter("confidence_level = 'MEDIUM'").count(),
+            # low_conf=scored_df.filter("confidence_level = 'LOW'").count(),
+            # uncertain=scored_df.filter("confidence_level = 'UNCERTAIN'").count()
         )
         
         return scored_df
@@ -258,7 +257,7 @@ class HotelClusteringOrchestrator:
         
         return conflicts_df
     
-    def _phase_cluster(self, scored_pairs_df: DataFrame) -> DataFrame:
+    def _phase_cluster(self, hotels_df: DataFrame, scored_pairs_df: DataFrame) -> DataFrame:
         """
         PHASE 3: Create clusters from scored pairs
         
@@ -267,8 +266,9 @@ class HotelClusteringOrchestrator:
         """
         self.logger.debug("Creating clusters")
 
-        clusters_df = self.clusterer.cluster(scored_pairs_df)
+        clusters_df = self.clusterer.cluster(hotels_df=hotels_df, scored_pairs_df=scored_pairs_df)
         clusters_df = clusters_df.cache()
+        
         
         cluster_count = clusters_df.select("cluster_id").distinct().count()
         
@@ -349,9 +349,9 @@ class HotelClusteringOrchestrator:
     
     def _phase_write(
         self,
-        clusters_df,
         scored_pairs_df,
-        metadata: Dict[str, Any]
+        clusters_df,
+        metadata: Dict[str, Any] | None
     ) -> None:
         """
         PHASE 5: Write results to storage
@@ -366,7 +366,7 @@ class HotelClusteringOrchestrator:
         self.logger.debug("Writing results to storage")
         
         try:
-            self.metadata_recorder.record_metadata(scored_pairs_df, clusters_df,metadata=metadata)        
+            self.metadata_recorder.record_metadata(scored_pairs_df, clusters_df,metadata=None)        
         except Exception as e:
             self.logger.error(f"Write failed: {str(e)}")
             raise

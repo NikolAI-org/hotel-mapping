@@ -91,7 +91,7 @@ def main():
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -108,6 +108,8 @@ def main():
         .config("spark.hadoop.datanucleus.autoCreateSchema", "true")
         .config("spark.hadoop.datanucleus.fixedDatastore", "true")
         .config("spark.sql.catalogImplementation", "hive")
+        .config("spark.executor.memory", "8g")
+        .config("spark.driver.memory", "4g")
         .enableHiveSupport()
         .getOrCreate()
     )

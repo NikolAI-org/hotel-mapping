@@ -42,12 +42,9 @@ class ClusterIO(TableIO):
                 'largest_cluster': stats['largest_cluster']
             }
             
-            # Format clusters
-            df_formatted = self._format_clusters(df)
-            
             # Call base writer
             result = self.base_writer.write(
-                df_formatted,
+                df,
                 location,
                 cluster_metadata
             )
@@ -125,29 +122,10 @@ class ClusterIO(TableIO):
             
             # ✅ FIX: Only select cluster_id if it exists
             if "cluster_id" in df.columns:
-                columns_to_select.append("cluster_id")
-            
-            # Add other required columns if they exist
-            for col in ["id_i", "id_j", "name_i","name_j","composite_score", "confidence_level", "is_black_hole"]:
-                if col in df.columns:
-                    columns_to_select.append(col)
-            
-            # If cluster_id not in columns, add all available columns
-            if "cluster_id" not in columns_to_select:
-                self.logger.warning("cluster_id not available, returning all columns")
+                self.logger.warning("cluster_id not found, returning as-is")
                 return df
             
-            # Select and sort
-            result = df.select(columns_to_select)
-            
-            # Only sort by cluster_id if it exists
-            if "cluster_id" in result.columns:
-                result = result.sort("cluster_id")
-                if "composite_score" in result.columns:
-                    result = result.orderBy(
-                        F.col("cluster_id"),
-                        F.col("composite_score").desc()
-                    )
+            result = df.sort("cluster_id", "id")
             
             return result
             

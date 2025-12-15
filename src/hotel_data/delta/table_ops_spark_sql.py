@@ -1,5 +1,6 @@
 from pathlib import Path
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 from hotel_data.config.paths import (
     BASE_DELTA_PATH,
@@ -26,7 +27,7 @@ spark = (
     .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
     # ---- S3/MinIO config ----
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
+    .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
     .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -70,8 +71,104 @@ manager = DeltaTableManager(
 
 
 # Optional fallback: direct path read (escape hatch)
-df_fallback = spark.read.format("delta").load(
-    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/hotels"
+df = spark.read.format("delta").load(
+    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/hotel_pairs"
 )
-df_fallback.show(5)
-df_fallback.printSchema()
+df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select("name_i", "name_j").show()
+
+# df.printSchema()
+# df = df.filter(F.col("id") == "39698858")
+# df.select("id", "name", "cluster_id", "providerId", "geoCode_lat",
+#         "geoCode_long",
+#         "geohash").show(truncate=False)
+# print(
+#     df.select("name", "cluster_id", "id")
+#       .limit(1)
+#       .toJSON()
+#       .collect()[0]
+# )
+
+
+
+
+# selected_names = [
+#     "lemon tree premier mumbai international airport",
+#     "lemon tree premier, mumbai international airport"
+# ]
+
+# pairs_df = (
+#     df
+#     .select(
+#         "id",
+#         "name",
+#         "geoCode_lat",
+#         "geoCode_long",
+#         "geohash",
+#         "providerId",
+#         F.explode("pairing_details").alias("pair")
+#     )
+#     .filter(F.col("pair.paired_hotel_name").isin(selected_names))
+#     .select(
+#         "id",
+#         "name",
+#         "geoCode_lat",
+#         "geoCode_long",
+#         "geohash",
+#         "providerId",
+#         F.col("pair.paired_hotel_name").alias("paired_hotel_name"),
+#         F.col("pair.match_status").alias("match_status"),
+#         F.col("pair.match_reason").alias("match_reason"),
+#         F.col("pair.condition_results").alias("condition_results")
+#     )
+# )
+# conditions_df = pairs_df.select(
+#     "id",
+#     "name",
+#     "paired_hotel_name",
+#     "match_status",
+#     "condition_results.geo_distance_km",
+#     "condition_results.name_score_jaccard_lcs",
+#     "condition_results.normalized_name_score_sbert",
+#     "condition_results.star_ratings_score",
+#     "condition_results.address_line1_score",
+#     "condition_results.postal_code_match",
+#     "condition_results.country_match",
+#     "condition_results.address_sbert_score",
+#     "condition_results.phone_match_score",
+#     "condition_results.email_match_score",
+#     "condition_results.fax_match_score"
+# )
+
+# conditions_df.show(truncate=False)
+
+
+
+# # Unique count of id and cluster id
+# result_df = df.agg(
+#     F.countDistinct("id").alias("unique_id_count"),
+#     F.countDistinct("cluster_id").alias("unique_cluster_id_count")
+# )
+
+# result_df.show(truncate=False)
+
+# # Fetch count of same id
+# id_counts_df = (
+#     df.select("id", "name", "cluster_id", "combined_address").groupBy("id")
+#       .agg(F.count("*").alias("record_count"))
+#       .filter(F.col("record_count") > 1)
+#       .orderBy(F.col("record_count").desc())
+# )
+# id_counts_df.show()
+
+# # Fetch count of same cluster id
+# cluster_id_counts_df = (
+#     df.select("id", "name", "cluster_id", "combined_address").groupBy("cluster_id")
+#       .agg(F.count("*").alias("record_count"))
+#       .filter(F.col("record_count") > 1)
+#       .orderBy(F.col("record_count").desc())
+# )
+# cluster_id_counts_df.show()
+
+# # Filter the records with id 
+# filtered_df = df.filter(F.col("id") == "39698858").select("name", "id", "cluster_id","geoCode_lat", "geoCode_long", "combined_address")
+# filtered_df.show(truncate=False)

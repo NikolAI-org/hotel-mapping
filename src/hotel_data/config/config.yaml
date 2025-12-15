@@ -20,9 +20,37 @@ scoring:
     email_match_score: 0.05
   
   thresholds:
+    geo_distance_km: 0.5
+    name_score_jaccard_lcs: 0.80
+    normalized_name_score_jaccard_lcs: 0.50
+    name_score_sbert: 0.50
+    normalized_name_score_sbert: 0.50
+    star_ratings_score: 0.10
+    address_line1_score: 0.50
+    postal_code_match: 0.90
+    country_match: 0.90
+    address_sbert_score: 0.50
+    phone_match_score: 0.50
+    email_match_score: 0.50
+    fax_match_score: 0.50
     high_confidence: 0.85
     medium_confidence: 0.70
     low_confidence: 0.55
+
+  comparators:
+      geo_distance_km: lte
+      name_score_jaccard_lcs: gte
+      normalized_name_score_jaccard_lcs: gte
+      name_score_sbert: gte
+      normalized_name_score_sbert: gte
+      star_ratings_score: gte
+      address_line1_score: gte
+      postal_code_match: gte
+      country_match: gte
+      address_sbert_score: gte
+      phone_match_score: gte
+      email_match_score: gte
+      fax_match_score: gte
   
   exclusion_rules:
     max_geo_distance_km: 5.0

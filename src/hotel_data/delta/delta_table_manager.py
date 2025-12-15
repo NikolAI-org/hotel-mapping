@@ -139,11 +139,11 @@ class DeltaTableManager:
         print(f"📦 Creating Delta table '{fq_name}' at {path}")
 
         if df is not None and df.columns:
-            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
+            df.repartition(100).write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
         else:
             # In practice, you should always pass a schema'd empty DF here.
             df = df if df is not None else self.spark.createDataFrame([], "id STRING")
-            df.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
+            df.repartition(200).write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(path)
 
         # Register in catalog
         try:

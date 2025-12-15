@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 from hotel_data.config.scoring_config import HotelClusteringConfig
 from hotel_data.pipeline.clustering.core.clustering_interfaces import Logger, ScoringStrategy
 from hotel_data.pipeline.clustering.infrastructure.logging.logger import ConsoleLogger
-from hotel_data.pipeline.clustering.services.scoring_service import CompositeScoringStrategy
+from hotel_data.pipeline.clustering.services.scoring_service import ThresholdScoringStrategy
 
 class DependencyContainer:
     """
@@ -169,7 +169,7 @@ class DependencyContainer:
         logger = DependencyContainer.get_logger()
         
         # All dependencies injected via constructor
-        return CompositeScoringStrategy(
+        return ThresholdScoringStrategy(
             config=config.scoring,  # Extract ScoringConfig
             logger=logger
         )
@@ -195,6 +195,7 @@ class DependencyContainer:
         """Factory method for clusterer"""
         config = DependencyContainer.get_config()
         logger = DependencyContainer.get_logger()
+        spark = DependencyContainer.get_spark()
         
         # from services.clustering_service import UnionFindClusteringStrategy
         
@@ -204,9 +205,9 @@ class DependencyContainer:
         #     config=config.clustering,
         #     logger=logger
         # )
-        from hotel_data.pipeline.clustering.services.clustering_service import UnionFindClusteringStrategy
-        return UnionFindClusteringStrategy(
-            config=config.clustering,
+        from hotel_data.pipeline.clustering.services.clustering_service import UnionFindHotelClustering
+        return UnionFindHotelClustering(
+            spark=spark,
             logger=logger
         )
     

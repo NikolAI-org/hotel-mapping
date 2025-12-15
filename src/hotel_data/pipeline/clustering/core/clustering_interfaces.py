@@ -127,7 +127,7 @@ class ClusteringStrategy(ABC):
     """Interface for clustering strategies"""
     
     @abstractmethod
-    def cluster(self, scored_pairs_df: DataFrame) -> DataFrame:
+    def cluster(self, hotels_df: DataFrame, scored_pairs_df: DataFrame) -> DataFrame:
         """
         Create clusters from scored pairs
         
@@ -179,7 +179,7 @@ class MetadataRecorder(ABC):
     def record_metadata(self, 
         scored_pairs_df: DataFrame,
         clusters_df: DataFrame,
-        metadata: Dict[str, Any]) -> None:
+        metadata: Dict[str, Any] | None) -> None:
         """Get collected metrics"""
         pass
 

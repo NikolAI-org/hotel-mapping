@@ -40,7 +40,7 @@ def main():
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -57,6 +57,8 @@ def main():
         .config("spark.hadoop.datanucleus.autoCreateSchema", "true")
         .config("spark.hadoop.datanucleus.fixedDatastore", "true")
         .config("spark.sql.catalogImplementation", "hive")
+        .config("spark.executor.memory", "8g")
+        .config("spark.driver.memory", "4g")
         .enableHiveSupport()
         .getOrCreate()
     )
@@ -111,12 +113,13 @@ def main():
     
     print("\n[PHASE 5] Running clustering pipeline...")
     results = orchestrator.run_batch(hotels_df, pairs_df)
+
     
     if results['status'] == 'SUCCESS':
         print("✅ Pipeline completed successfully!")
-        print(f"\n   Clusters created: {results['clusters'].count()}")
-        print(f"   Conflicts found: {results['conflicts'].filter('has_conflict').count()}")
-        print(f"   Metadata: {results['metadata']}")
+        # print(f"\n   Clusters created: {results['clusters'].count()}")
+        # print(f"   Conflicts found: {results['conflicts'].filter('has_conflict').count()}")
+        # print(f"   Metadata: {results['metadata']}")
     else:
         print(f"❌ Pipeline failed: {results['error']}")
         return
@@ -129,22 +132,21 @@ def main():
     
     print("\n--- SCORED PAIRS SAMPLE ---")
     results['scored_pairs'].select(
-        "id_i", "id_j",
-        "composite_score",
-        "confidence_level"
+        "id_i", "id_j", "name_i", "name_j",
+        "match_status", "match_score",
+        "is_matched"
     ).show(10)
 
     print("\n--- CLUSTERS SAMPLE ---")
     results['clusters'].select(
-        "id_i", "id_j",
-        "cluster_id",
-        "composite_score"
+        "name", "id",
+        "cluster_id"
     ).show(10)
     
     print("\n--- CLUSTER STATISTICS ---")
     print(f"Total unique clusters: {results['clusters'].select('cluster_id').distinct().count()}")
     print(f"Total pairs in clusters: {results['clusters'].count()}")
-    print(f"Metadata: {results['metadata']}")
+    # print(f"Metadata: {results['metadata']}")
 
     print("\n" + "=" * 70)
     print("✅ PIPELINE COMPLETED SUCCESSFULLY")

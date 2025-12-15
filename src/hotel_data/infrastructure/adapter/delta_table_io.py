@@ -56,15 +56,24 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
         metadata: Dict[str, Any] | None = None
     ) -> Dict[str, Any]:
         """
-        Write DataFrame to Delta table
+        Write DataFrame to Delta table WITHOUT adding metadata columns.
         
-        Delegates to DeltaTableManager, adds metadata tracking
+        CRITICAL FIX:
+        - Write ORIGINAL DataFrame (no _meta_* columns)
+        - Track metadata in separate _write_metadata table
+        
+        Args:
+            df: DataFrame to write (will NOT be modified)
+            location: Table name to write to
+            metadata: Dict with stats/debug info (stored separately, not in df)
+        
+        Returns:
+            Dict with write result (path, rows, timestamp)
         """
-        
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # Prepare metadata
+            # Prepare metadata for tracking (DO NOT ADD TO DataFrame)
             write_metadata = {
                 'location': location,
                 'timestamp': timestamp,
@@ -73,17 +82,18 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
                 **(metadata or {})
             }
             
-            # Add metadata columns
-            df_with_meta = self._add_metadata_columns(df, write_metadata)
-            
-            # Write via DeltaTableManager
+            # ✅ FIX: Write ORIGINAL DataFrame WITHOUT metadata columns
+            # This preserves your original schema (name, id, cluster_id, etc.)
             self.delta_manager.write_table(
                 table_name=location,
-                df=df_with_meta,
-                mode="overwrite"  # Can be parameterized
+                df=df,  # ← Write original df, NOT modified version
+                mode="overwrite"
             )
             
-            # Track write
+            # Track metadata separately in metadata table
+            self.track_write(location, write_metadata)
+            
+            # Return result
             result = {
                 'location': location,
                 'timestamp': timestamp,
@@ -100,11 +110,12 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
             self.logger.info(
                 f"DeltaWriter: Wrote {location}",
                 timestamp=timestamp,
-                rows=write_metadata['rows']
+                rows=write_metadata['rows'],
+                note="Metadata tracked separately in _write_metadata table"
             )
             
             return result
-        
+            
         except Exception as e:
             self.logger.error(f"DeltaWriter write failed for {location}: {str(e)}")
             raise
@@ -115,17 +126,14 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
         version: str | None = None
     ) -> DataFrame | None:
         """
-        Read from Delta table
+        Read from Delta table.
         
-        Delegates to DeltaTableManager
-        Note: version parameter for future compatibility with versioned reads
+        Returns: DataFrame with ONLY original columns (no _meta_* columns)
         """
-        
         try:
             df = self.delta_manager.read_table(table_name=location)
             self.logger.info(f"DeltaWriter: Read {location} → {df.count()} rows")
             return df
-        
         except Exception as e:
             self.logger.error(f"DeltaWriter read failed for {location}: {str(e)}")
             return None
@@ -136,7 +144,6 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
     
     def list_versions(self, location: str) -> List[str]:
         """List all versions (timestamps) for a location"""
-        
         try:
             # Read metadata index and filter by location
             if self._metadata_index_exists():
@@ -149,9 +156,7 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
                     .collect()
                 )
                 return [row['timestamp'] for row in versions]
-            
             return []
-        
         except Exception as e:
             self.logger.warning(f"Failed to list versions for {location}: {str(e)}")
             return []
@@ -162,12 +167,11 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
         keep_recent: int
     ) -> int:
         """
-        Remove old versions, keeping most recent
+        Remove old versions, keeping most recent.
         
         Note: This is simplified. In production, you'd manage
         version directories or use Delta table time travel.
         """
-        
         try:
             versions = self.list_versions(location)
             removed = 0
@@ -178,12 +182,8 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
                 self.logger.info(f"Would remove old version: {old_version}")
                 removed += 1
             
-            self.logger.info(
-                f"Cleaned {removed} old versions for {location}"
-            )
-            
+            self.logger.info(f"Cleaned {removed} old versions for {location}")
             return removed
-        
         except Exception as e:
             self.logger.warning(f"Cleanup failed: {str(e)}")
             return 0
@@ -199,17 +199,14 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
             return True
         except Exception:
             return False
-    
+
     def get_metadata_index(self) -> DataFrame | None:
         """Get metadata index of all writes"""
-        
         try:
             if self._metadata_index_exists():
                 return self.delta_manager.read_table(self.metadata_table)
-            
             self.logger.info("No metadata index yet")
             return None
-        
         except Exception as e:
             self.logger.warning(f"Failed to get metadata index: {str(e)}")
             return None
@@ -220,15 +217,15 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
         metadata: Dict[str, Any]
     ) -> None:
         """
-        Track a write in metadata index
+        Track a write in metadata index.
         
-        Creates metadata table if needed
+        Creates metadata table if needed.
+        This stores metadata SEPARATELY from your data tables.
         """
-        
         try:
             spark = self.delta_manager.spark
             
-            # Create metadata record
+            # Create metadata record with all details
             record = {
                 'location': location,
                 'timestamp': datetime.now().isoformat(),
@@ -239,30 +236,13 @@ class DeltaTableIO(VersionedWriter, MetadataTracker, TableIO):
             
             # Write to metadata table
             self.delta_manager.write_table(
-                table_name=self.metadata_table,
+                table_name=f"{location}{self.metadata_table}",
                 df=metadata_df,
                 mode="append"
             )
-        
+            
+            self.logger.debug(f"Metadata tracked for {location}")
+            
         except Exception as e:
             self.logger.warning(f"Metadata tracking failed: {str(e)}")
-    
-    # ════════════════════════════════════════════════════════════════════════
-    # HELPERS
-    # ════════════════════════════════════════════════════════════════════════
-    
-    def _add_metadata_columns(
-        self,
-        df: DataFrame,
-        metadata: Dict[str, Any]
-    ) -> DataFrame:
-        """Add metadata columns to DataFrame"""
-        
-        result = df
-        
-        for key, value in metadata.items():
-            if isinstance(value, (int, float, str, bool)):
-                col_name = f"_meta_{key}"
-                result = result.withColumn(col_name, lit(value))
-        
-        return result
+            # Don't raise - metadata tracking failure shouldn't block data writes

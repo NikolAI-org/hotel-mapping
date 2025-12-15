@@ -101,7 +101,7 @@ def main():
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config(
             "spark.hadoop.fs.s3a.endpoint",
-            "http://192.168.1.4:9000",
+            "http://172.16.16.152:9000",
         )
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
@@ -159,7 +159,7 @@ def main():
     spark.sparkContext.setLogLevel("WARN")
 
     hadoopConf = spark._jsc.hadoopConfiguration() # type: ignore
-    hadoopConf.set("fs.s3a.endpoint", "http://192.168.1.4:9000")
+    hadoopConf.set("fs.s3a.endpoint", "http://172.16.16.152:9000")
     hadoopConf.set("fs.s3a.access.key", "minioadmin")
     hadoopConf.set("fs.s3a.secret.key", "minioadmin")
     hadoopConf.set("fs.s3a.path.style.access", "true")
