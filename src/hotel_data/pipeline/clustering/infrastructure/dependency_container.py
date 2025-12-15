@@ -197,19 +197,22 @@ class DependencyContainer:
         logger = DependencyContainer.get_logger()
         spark = DependencyContainer.get_spark()
         
-        # from services.clustering_service import UnionFindClusteringStrategy
         
-        # from hotel_data.pipeline.clustering.services.stub_services import StubClusterer
-        
-        # return StubClusterer(
-        #     config=config.clustering,
-        #     logger=logger
-        # )
+        DEFAULT_ALGORITHM = "unionfind"
+
+        raw_algorithm = getattr(config.clustering, "algorithm", None)
+
+        algorithm = (
+            raw_algorithm.strip().casefold()
+            if isinstance(raw_algorithm, str) and raw_algorithm.strip()
+            else DEFAULT_ALGORITHM
+        )
         from hotel_data.pipeline.clustering.services.clustering_service import UnionFindHotelClustering
         return UnionFindHotelClustering(
-            spark=spark,
-            logger=logger
-        )
+                spark=spark,
+                logger=logger
+            )        
+        
     
     @staticmethod
     def get_metadata_recorder():

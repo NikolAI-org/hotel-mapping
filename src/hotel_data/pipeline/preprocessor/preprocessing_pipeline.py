@@ -110,6 +110,9 @@ def main():
         .config("spark.sql.catalogImplementation", "hive")
         .config("spark.executor.memory", "8g")
         .config("spark.driver.memory", "4g")
+        .config("spark.hadoop.fs.s3a.connection.maximum", "64")
+        .config("spark.hadoop.fs.s3a.threads.max", "64")
+        .config("spark.sql.shuffle.partitions", "8")
         .enableHiveSupport()
         .getOrCreate()
     )
@@ -195,74 +198,32 @@ def stop_spark_gracefully(spark: SparkSession, wait_seconds: int = 5):
         print(f"Warning: Error during Spark shutdown: {e}")
 
 
-def debug_s3a_conf(spark):
-    conf = spark._jsc.hadoopConfiguration()
-    iterator = conf.iterator()
-    while iterator.hasNext():
-        entry = iterator.next()
-        k, v = entry.getKey(), entry.getValue()
-        if "s3a" in k.lower():
-            if isinstance(v, str) and any(ch.isalpha() for ch in v):  # contains h,m,s
-                print(f"⚠️ Problematic config: {k} = {v}")
-            else:
-                print(f"OK: {k} = {v}")
-
-
 # Apply flattening inside foreachBatch
-def process_batch(batch_df, batch_id, manager: DeltaTableManager):
-    if batch_df.rdd.isEmpty():
-        print(f"⚠️ Skipping empty batch {batch_id}")
+def process_batch(batch_df, batch_id, manager):
+    if batch_df.head(1) == []:
         return
 
-    print(f"----- Micro-batch {batch_id} -----")
+    flatten = HotelFlattenerProcessor(explode_arrays=True)
+    mandatory = MandatoryFieldsFilterProcessor(CRITICAL_FIELDS)
 
-    # Define processors
-    flatten_processor = HotelFlattenerProcessor(explode_arrays=True)
-    critical_processor = MandatoryFieldsFilterProcessor(CRITICAL_FIELDS)
-    address_processor = AddressCombinerProcessor(ADDRESS_FIELDS)
-    lowercase_processor = LowercaseProcessor(EXCLUDE_LOWERCASE_FIELDS)
-    timestamp_processor = TimestampAppenderProcessor()
-    default_value_processor = DefaultValueProcessor(critical_fields=CRITICAL_FIELDS)
-    name_formatter_processor = NameFormatterProcessor(ADDRESS_FIELDS)
-    geo_hash_processor = GeoHashProcessor()
+    df = flatten.process(batch_df)
+    valid_df, invalid_df = mandatory.process(df)
 
-    # Pipeline step 1: flatten
-    flat_df = flatten_processor.process(batch_df)
+    pipeline = DataProcessingPipeline([
+        AddressCombinerProcessor(ADDRESS_FIELDS),
+        LowercaseProcessor(EXCLUDE_LOWERCASE_FIELDS),
+        TimestampAppenderProcessor(),
+        DefaultValueProcessor(CRITICAL_FIELDS),
+        NameFormatterProcessor(ADDRESS_FIELDS),
+        GeoHashProcessor()
+    ])
 
-    # Pipeline step 2: filter valid/invalid
-    valid_df, invalid_df = critical_processor.process(flat_df)
+    valid_df = pipeline.run(valid_df).persist()
+    valid_df.count()  # materialize once
 
-    # Pipeline step 3: transform valid records
-    transformation_pipeline = DataProcessingPipeline(
-        [
-            address_processor,
-            lowercase_processor,
-            timestamp_processor,
-            default_value_processor,
-            name_formatter_processor,
-        ]
-    )
-    valid_df = transformation_pipeline.run(valid_df)
-    valid_df = geo_hash_processor.process(valid_df)
-    valid_df = add_sbert_vectors(valid_df)
-    print(f"name_embedding completed for SBERT")
-    valid_df = add_sbert_vectors(valid_df, input_col="normalized_name", output_col="normalized_name_embedding")
-    print(f"normalized_name_embedding completed for SBERT")
-    valid_df = add_sbert_vectors(
-        valid_df,
-        input_col="combined_address",
-        output_col="address_embedding"  # New column for the address vector
-    )
-    print("Address embedding completed for SBERT")
-
-    # for row in valid_df.limit(1).collect():
-    #     print(json.dumps(row.asDict(recursive=True), indent=2, default=datetime_handler))
-
-    # Pipeline step 4: write results
     safe_write_table(manager, TABLE_HOTELS_NAME, valid_df)
     safe_write_table(manager, TABLE_HOTELS_FAILED_NAME, invalid_df)
 
-    print(f"✅ Written valid records for batch {batch_id}, Invalid: {valid_df.count()}")
 
 
 def safe_write_table(manager, table_name, df, mode="append", path=None):

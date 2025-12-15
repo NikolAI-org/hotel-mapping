@@ -132,6 +132,7 @@ class ClusteringConfig:
     confidence_threshold: float
     min_cluster_size: int
     black_hole_min_size: int
+    algorithm: str
     
     
     def validate(self) -> bool:

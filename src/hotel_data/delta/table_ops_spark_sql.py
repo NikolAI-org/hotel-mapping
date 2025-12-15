@@ -72,9 +72,21 @@ manager = DeltaTableManager(
 
 # Optional fallback: direct path read (escape hatch)
 df = spark.read.format("delta").load(
-    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/hotel_pairs"
+    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/02_scored_pairs"
 )
-df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select("name_i", "name_j").show()
+# df.select(F.col("address_sbert_score")).distinct().show()
+col1 = "normalized_name_score_sbert"
+col2 = "name_score_sbert"
+df.agg(
+    F.min(col1).alias(f"min_{col1}"),
+    F.max(col1).alias(f"max_{col1}"),
+    F.avg(col1).alias(f"avg_{col1}"),
+    F.min(col2).alias(f"min_{col2}"),
+    F.max(col2).alias(f"max_{col2}"),
+    F.avg(col2).alias(f"avg_{col2}"),
+).show(truncate=False)
+# df.show(truncate=False,n=20)
+# df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select("name_i", "name_j").show()
 
 # df.printSchema()
 # df = df.filter(F.col("id") == "39698858")
@@ -151,7 +163,7 @@ df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select(
 
 # result_df.show(truncate=False)
 
-# # Fetch count of same id
+# # # Fetch count of same id
 # id_counts_df = (
 #     df.select("id", "name", "cluster_id", "combined_address").groupBy("id")
 #       .agg(F.count("*").alias("record_count"))
@@ -169,6 +181,6 @@ df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select(
 # )
 # cluster_id_counts_df.show()
 
-# # Filter the records with id 
+# # # Filter the records with id 
 # filtered_df = df.filter(F.col("id") == "39698858").select("name", "id", "cluster_id","geoCode_lat", "geoCode_long", "combined_address")
 # filtered_df.show(truncate=False)

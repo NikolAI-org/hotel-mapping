@@ -8,7 +8,6 @@ from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.pipeline.clustering.infrastructure.dependency_container import DependencyContainer
 
 def main():
-    """Complete pipeline example using orchestrator"""
     
     print("=" * 70)
     print("HOTEL CLUSTERING PIPELINE WITH ORCHESTRATOR")
@@ -34,6 +33,7 @@ def main():
         .config("spark.jars.packages", ",".join([
             "io.delta:delta-spark_2.13:4.0.0",
             "org.apache.hadoop:hadoop-aws:3.4.1",
+            "io.graphframes:graphframes-spark4_2.13:0.10.0"
         ]))
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
@@ -57,8 +57,8 @@ def main():
         .config("spark.hadoop.datanucleus.autoCreateSchema", "true")
         .config("spark.hadoop.datanucleus.fixedDatastore", "true")
         .config("spark.sql.catalogImplementation", "hive")
-        .config("spark.executor.memory", "8g")
-        .config("spark.driver.memory", "4g")
+        # .config("spark.executor.memory", "8g")
+        # .config("spark.driver.memory", "4g")
         .enableHiveSupport()
         .getOrCreate()
     )

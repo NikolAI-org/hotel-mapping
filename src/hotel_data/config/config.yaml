@@ -21,22 +21,23 @@ scoring:
   
   thresholds:
     geo_distance_km: 0.5
-    name_score_jaccard_lcs: 0.80
-    normalized_name_score_jaccard_lcs: 0.50
-    name_score_sbert: 0.50
-    normalized_name_score_sbert: 0.50
-    star_ratings_score: 0.10
-    address_line1_score: 0.50
-    postal_code_match: 0.90
+    name_score_jaccard_lcs: 0.18
+    normalized_name_score_jaccard_lcs: 0.0
+    name_score_sbert: 0.0
+    normalized_name_score_sbert: 0.0
+    star_ratings_score: 0.5
+    address_line1_score: 0.4
+    postal_code_match: 0.6
     country_match: 0.90
-    address_sbert_score: 0.50
-    phone_match_score: 0.50
-    email_match_score: 0.50
-    fax_match_score: 0.50
+    address_sbert_score: 0.0
+    phone_match_score: 0.0
+    email_match_score: 0.0
+    fax_match_score: 0.0
     high_confidence: 0.85
     medium_confidence: 0.70
     low_confidence: 0.55
 
+  # Values can be lte, gte, gt, lt
   comparators:
       geo_distance_km: lte
       name_score_jaccard_lcs: gte
@@ -73,6 +74,8 @@ conflict_detection:
   save_conflicts: true
 
 clustering:
+  algorithm: unionfind
+  # Options could be graphframes, labelpropagation, leiden, unionfind
   # PRE Existing (unchanged)
   min_score_threshold: 0.50
   max_cluster_size: null

@@ -56,32 +56,13 @@ class UnionFindHotelClustering(ClusteringStrategy):
             
             matched_count = edges.count()
             self.logger.info(f"Found {matched_count} unique name-based pairs")
-            
-            # ═══════════════════════════════════════════════════════════
-            # STEP 2: Initialize Parent Map with Names
-            # ═══════════════════════════════════════════════════════════
-            
-            # Extract unique names from both columns
-            unique_names = edges.select(F.col("name_i").alias("name")).union(
-                edges.select(F.col("name_j").alias("name"))
-            ).distinct()
-            
-            total_names = unique_names.count()
-            self.logger.info(f"Total unique hotel names in pairs: {total_names}")
-            
-            # Each name is initially its own parent (root)
-            parent_map = unique_names.select(
-                F.col("name").alias("hotel_name"),
-                F.col("name").alias("parent")
-            )
-            
-            parent_map.cache()
+        
             
             # ═══════════════════════════════════════════════════════════
             # STEP 3: Union-Find Algorithm (Name-based)
             # ═══════════════════════════════════════════════════════════
             
-            parent_map = self._union_find(edges, parent_map)
+            parent_map = self._connected_components(edges)
             
             # ═══════════════════════════════════════════════════════════
             # STEP 4: Assign Cluster IDs
@@ -129,82 +110,6 @@ class UnionFindHotelClustering(ClusteringStrategy):
         except Exception as e:
             self.logger.error(f"Clustering failed: {str(e)}")
             raise
-    
-    def _union_find(self, edges: DataFrame, parent_map: DataFrame) -> DataFrame:
-        """
-        Union-Find algorithm operating on hotel NAMES.
-        """
-        
-        max_iterations = 50
-        iteration = 0
-        prev_root_count = 0
-        
-        while iteration < max_iterations:
-            iteration += 1
-            
-            # Lookup parent for name_i
-            updated = edges.join(
-                parent_map.select(F.col("hotel_name"), F.col("parent").alias("parent_i")),
-                edges["name_i"] == parent_map["hotel_name"],
-                "left"
-            ).select(F.col("name_i"), F.col("name_j"), F.col("parent_i"))
-            
-            # Lookup parent for name_j
-            updated = updated.join(
-                parent_map.select(F.col("hotel_name"), F.col("parent").alias("parent_j")),
-                updated["name_j"] == parent_map["hotel_name"],
-                "left"
-            ).select(F.col("name_i"), F.col("name_j"), F.col("parent_i"), F.col("parent_j"))
-            
-            # Union: point to minimum parent
-            updated = updated.withColumn(
-                "min_parent",
-                F.least(F.col("parent_i"), F.col("parent_j"))
-            )
-            
-            # Collect updates
-            updates_i = updated.select(
-                F.col("parent_i").alias("hotel_name"),
-                F.col("min_parent").alias("new_parent")
-            ).distinct()
-            
-            updates_j = updated.select(
-                F.col("parent_j").alias("hotel_name"),
-                F.col("min_parent").alias("new_parent")
-            ).distinct()
-            
-            all_updates = updates_i.union(updates_j).distinct()
-            
-            # Apply updates
-            parent_map = parent_map.join(
-                all_updates,
-                parent_map["hotel_name"] == all_updates["hotel_name"],
-                "left"
-            ).select(
-                parent_map["hotel_name"],
-                F.when(
-                    all_updates["new_parent"].isNotNull(),
-                    F.least(parent_map["parent"], all_updates["new_parent"])
-                ).otherwise(parent_map["parent"]).alias("parent")
-            )
-            
-            # Check convergence
-            roots = parent_map.filter(
-                F.col("hotel_name") == F.col("parent")
-            ).count()
-            
-            self.logger.info(f"Union-Find Iteration {iteration}: {roots} roots")
-            
-            if roots == prev_root_count:
-                self.logger.info(f"✓ Converged at iteration {iteration}")
-                break
-            
-            prev_root_count = roots
-        
-        if iteration == max_iterations:
-            self.logger.warning(f"⚠ Did not converge after {max_iterations} iterations")
-        
-        return parent_map
     
     def _assign_cluster_ids(self, parent_map: DataFrame) -> DataFrame:
         """
@@ -267,3 +172,74 @@ class UnionFindHotelClustering(ClusteringStrategy):
         )
         
         return hotels_df.join(clusters, on="name", how="left")
+    
+    def _connected_components(
+        self,
+        edges: DataFrame,
+        max_iter: int = 50
+    ) -> DataFrame:
+        """
+        Spark-native Connected Components (Union-Find equivalent).
+        Returns: DataFrame[hotel_name, parent]
+        """
+
+        # ------------------------------------------------------------------
+        # Build undirected edges WITH explicit aliasing
+        # ------------------------------------------------------------------
+        edges_ud = edges.select(
+            F.col("name_i").alias("src"),
+            F.col("name_j").alias("dst")
+        ).union(
+            edges.select(
+                F.col("name_j").alias("src"),
+                F.col("name_i").alias("dst")
+            )
+        ).distinct()
+
+        # ------------------------------------------------------------------
+        # Initialize labels
+        # ------------------------------------------------------------------
+        vertices = edges_ud.select(F.col("src").alias("id")).union(
+            edges_ud.select(F.col("dst").alias("id"))
+        ).distinct()
+
+        labels = vertices.withColumn("label", F.col("id"))
+
+        # ------------------------------------------------------------------
+        # Iterative label propagation
+        # ------------------------------------------------------------------
+        for iteration in range(max_iter):
+            self.logger.info(f"CC iteration {iteration + 1}")
+
+            l = labels.alias("l")
+            e = edges_ud.alias("e")
+
+            propagated = (
+                l.join(e, F.col("l.id") == F.col("e.src"), "left")
+                .select(
+                    F.col("l.id").alias("id"),
+                    F.coalesce(
+                        F.least(F.col("l.label"), F.col("e.dst")),
+                        F.col("l.label")
+                    ).alias("candidate")
+                )
+            )
+
+            new_labels = (
+                propagated
+                .groupBy("id")
+                .agg(F.min("candidate").alias("label"))
+            )
+
+            # Convergence check (Spark 4 safe)
+            if new_labels.exceptAll(labels).isEmpty():
+                self.logger.info(f"✓ CC converged at iteration {iteration + 1}")
+                break
+
+            labels = new_labels
+
+        return labels.select(
+            F.col("id").alias("hotel_name"),
+            F.col("label").alias("parent")
+        )
+
