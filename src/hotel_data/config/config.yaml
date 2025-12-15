@@ -75,7 +75,7 @@ conflict_detection:
 
 clustering:
   algorithm: unionfind
-  # Options could be graphframes, labelpropagation, leiden, unionfind
+  # Options could be labelpropagation, leiden, unionfind
   # PRE Existing (unchanged)
   min_score_threshold: 0.50
   max_cluster_size: null

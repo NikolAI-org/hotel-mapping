@@ -207,11 +207,18 @@ class DependencyContainer:
             if isinstance(raw_algorithm, str) and raw_algorithm.strip()
             else DEFAULT_ALGORITHM
         )
-        from hotel_data.pipeline.clustering.services.clustering_service import UnionFindHotelClustering
-        return UnionFindHotelClustering(
-                spark=spark,
-                logger=logger
-            )        
+        if algorithm == 'labelpropagation':
+            from hotel_data.pipeline.clustering.services.clustering_service import FixedLabelPropagationClustering
+            return FixedLabelPropagationClustering(
+                    spark=spark,
+                    logger=logger
+                )
+        else:
+            from hotel_data.pipeline.clustering.services.clustering_service_driversideclustering import DriverSideUnionFindClustering
+            return DriverSideUnionFindClustering(
+                    spark=spark,
+                    logger=logger
+                )
         
     
     @staticmethod
