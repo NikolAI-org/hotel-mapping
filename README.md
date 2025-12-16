@@ -57,6 +57,97 @@
 
 
     ```
+# Clustering 
+- Pipelines for executing the cluster logic
+```
+Create actual cluster: poetry run python -m hotel_data.pipeline.clustering.hotel_clustering_pipeline
+Generate the insights: poetry run python -m hotel_data.pipeline.clustering.pairing_insights_pipeline
+```    
+- 06_final_clusters schema
++----------------------------+-------------+-------+
+|col_name                    |data_type    |comment|
++----------------------------+-------------+-------+
+|name                        |string       |NULL   |
+|id                          |string       |NULL   |
+|normalized_name             |string       |NULL   |
+|relevanceScore              |string       |NULL   |
+|providerId                  |string       |NULL   |
+|providerHotelId             |string       |NULL   |
+|providerName                |string       |NULL   |
+|language                    |string       |NULL   |
+|geoCode_lat                 |string       |NULL   |
+|geoCode_long                |string       |NULL   |
+|geohash                     |array<string>|NULL   |
+|contact_address_line1       |string       |NULL   |
+|contact_address_city_name   |string       |NULL   |
+|contact_address_state_name  |string       |NULL   |
+|contact_address_country_code|string       |NULL   |
+|contact_address_country_name|string       |NULL   |
+|contact_address_postalCode  |string       |NULL   |
+|name_embedding              |array<float> |NULL   |
+|normalized_name_embedding   |array<float> |NULL   |
+|contact_phones              |array<string>|NULL   |
+|contact_fax                 |array<string>|NULL   |
+|contact_emails              |array<string>|NULL   |
+|type                        |string       |NULL   |
+|category                    |string       |NULL   |
+|starRating                  |string       |NULL   |
+|distance                    |string       |NULL   |
+|attributes                  |array<string>|NULL   |
+|imageCount                  |string       |NULL   |
+|availableSuppliers          |array<string>|NULL   |
+|combined_address            |string       |NULL   |
+|address_embedding           |array<float> |NULL   |
+|processing_time_utc         |timestamp    |NULL   |
+|original_message            |string       |NULL   |
+|cluster_id                  |string       |NULL   |
++----------------------------+-------------+-------+
+- Intermediate data for scoring comparison. scoring_metadata column will have details comparison
++----------------------------------------+---------+-------+
+|col_name                                |data_type|comment|
++----------------------------------------+---------+-------+
+|id_i                                    |string   |NULL   |
+|id_j                                    |string   |NULL   |
+|providerHotelId_i                       |string   |NULL   |
+|providerHotelId_j                       |string   |NULL   |
+|name_i                                  |string   |NULL   |
+|name_j                                  |string   |NULL   |
+|normalized_name_i                       |string   |NULL   |
+|normalized_name_j                       |string   |NULL   |
+|geo_distance_km                         |double   |NULL   |
+|name_score_jaccard_lcs                  |float    |NULL   |
+|normalized_name_score_jaccard_lcs       |float    |NULL   |
+|name_score_sbert                        |float    |NULL   |
+|normalized_name_score_sbert             |float    |NULL   |
+|star_ratings_score                      |float    |NULL   |
+|address_line1_score                     |float    |NULL   |
+|postal_code_match                       |float    |NULL   |
+|country_match                           |float    |NULL   |
+|address_sbert_score                     |float    |NULL   |
+|phone_match_score                       |float    |NULL   |
+|email_match_score                       |float    |NULL   |
+|fax_match_score                         |float    |NULL   |
+|geo_distance_km_passed                  |boolean  |NULL   |
+|name_score_jaccard_lcs_passed           |boolean  |NULL   |
+|normalized_name_score_jaccard_lcs_passed|boolean  |NULL   |
+|name_score_sbert_passed                 |boolean  |NULL   |
+|normalized_name_score_sbert_passed      |boolean  |NULL   |
+|star_ratings_score_passed               |boolean  |NULL   |
+|address_line1_score_passed              |boolean  |NULL   |
+|postal_code_match_passed                |boolean  |NULL   |
+|country_match_passed                    |boolean  |NULL   |
+|address_sbert_score_passed              |boolean  |NULL   |
+|phone_match_score_passed                |boolean  |NULL   |
+|email_match_score_passed                |boolean  |NULL   |
+|fax_match_score_passed                  |boolean  |NULL   |
+|scoring_metadata                        |string   |NULL   |
+|is_matched                              |boolean  |NULL   |
+|match_status                            |string   |NULL   |
+|match_score                             |double   |NULL   |
+|scoring_version                         |string   |NULL   |
+|scoring_timestamp                       |timestamp|NULL   |
++----------------------------------------+---------+-------+
+- Clustering can be done using two algorithm: unionfind, labelpropagation
 
 # Minikube Setup
 * Start Minikube

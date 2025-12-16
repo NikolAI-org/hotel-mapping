@@ -174,22 +174,6 @@ class DependencyContainer:
             logger=logger
         )
     
-    # @staticmethod
-    # def get_conflict_detector():
-    #     """Factory method for conflict detector"""
-    #     config = DependencyContainer.get_config()
-    #     logger = DependencyContainer.get_logger()
-        
-    #     from hotel_data.pipeline.clustering.services.conflict_service import TransitiveConflictDetector
-        
-    #     return TransitiveConflictDetector(
-    #         logger=logger,
-    #         confidence_threshold=config.scoring.thresholds.get('medium_confidence', 0.70),
-    #         conflict_tolerance=0.15,  # 15% score drop tolerance
-    #         max_chain_length=3,  # Prevent chains longer than 3
-    #         resolution_strategy="remove_weakest"  # Default strategy
-    #     )
-    
     @staticmethod
     def get_clusterer():
         """Factory method for clusterer"""

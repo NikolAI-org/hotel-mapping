@@ -42,7 +42,7 @@ scoring:
 
 clustering:
   algorithm: unionfind
-  # Options could be labelpropagation, leiden, unionfind
+  # Options could be labelpropagation, unionfind
 
 streaming:
   enabled: false

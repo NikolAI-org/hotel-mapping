@@ -7,10 +7,8 @@ from hotel_data.infrastructure.core.table_io import TableIO
 from hotel_data.pipeline.clustering.core.clustering_interfaces import (
     Logger,
     ScoringStrategy,
-    ConflictDetectionStrategy,
     ClusteringStrategy,
     MetadataRecorder,
-    ClusterWriter
 )
 
 class HotelClusteringOrchestrator:

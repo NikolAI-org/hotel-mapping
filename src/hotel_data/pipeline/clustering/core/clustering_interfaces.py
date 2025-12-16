@@ -31,93 +31,6 @@ class ScoringStrategy(ABC):
         """
         pass
 
-# ═══════════════════════════════════════════════════════════════════════════
-# CONFLICT DETECTION STRATEGY (NEW - Add this)
-# ═══════════════════════════════════════════════════════════════════════════
-
-class ConflictDetectionStrategy(ABC):
-    """
-    Interface for detecting and resolving conflicts in clustering
-    
-    A conflict occurs when:
-    - Hotel A matches with Hotel B (score >= threshold)
-    - Hotel B matches with Hotel C (score >= threshold)
-    - But Hotel A does NOT match Hotel C (score < threshold)
-    
-    This violates the transitive property of clustering.
-    
-    Example:
-        A ← confidence: 0.9 → B ← confidence: 0.85 → C
-        A ← confidence: 0.3 → C  (CONFLICT!)
-        
-        Reason: A~B and B~C should imply A~C
-    """
-    
-    @abstractmethod
-    def detect_conflicts(self, scored_pairs_df: DataFrame) -> DataFrame:
-        """
-        Detect conflicts in scored pairs
-        
-        Args:
-            scored_pairs_df: DataFrame with columns:
-                - id_i, id_j (hotel IDs)
-                - composite_score (0-1)
-                - confidence_level (HIGH/MEDIUM/LOW/UNCERTAIN)
-                - meets_exclusion_rules (boolean)
-        
-        Returns:
-            DataFrame with columns:
-                - id_i, id_j
-                - composite_score
-                - confidence_level
-                - meets_exclusion_rules
-                - has_conflict (boolean) ← NEW!
-                - conflict_reason (string) ← NEW!
-                - conflict_type (TRANSITIVE/CHAIN/etc) ← NEW!
-                - conflicting_path (struct) ← NEW!
-                - severity (0-1) ← NEW!
-        """
-        pass
-    
-    @abstractmethod
-    def resolve_conflicts(self, pairs_with_conflicts_df: DataFrame) -> Tuple[DataFrame, Dict[str, Any]]:
-        """
-        Resolve detected conflicts by removing or modifying pairs
-        
-        Strategies:
-        1. Remove lowest-confidence pair
-        2. Remove all pairs in conflict
-        3. Adjust confidence levels
-        4. Break chain at weakest link
-        
-        Args:
-            pairs_with_conflicts_df: DataFrame with conflict flags
-        
-        Returns:
-            DataFrame with conflicts resolved (has_conflict = False)
-        """
-        pass
-    
-    @abstractmethod
-    def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get conflict detection statistics
-        
-        Returns:
-            {
-                'total_pairs': int,
-                'conflicts_detected': int,
-                'conflict_types': {
-                    'transitive': int,
-                    'chain': int,
-                    ...
-                },
-                'average_severity': float,
-                'chains_found': int,
-                'longest_chain_length': int
-            }
-        """
-        pass
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CLUSTERING STRATEGY (NEW - Add this)
@@ -160,28 +73,6 @@ class MetadataRecorder(ABC):
         """Get collected metrics"""
         pass
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# CLUSTER WRITER (NEW - Add this)
-# ═══════════════════════════════════════════════════════════════════════════
-
-class ClusterWriter(ABC):
-    """Interface for writing clustering results"""
-    
-    @abstractmethod
-    def write_clusters(self, clusters_df: DataFrame, path: str | None = None) -> None:
-        """Write cluster assignments to storage"""
-        pass
-    
-    @abstractmethod
-    def write_scored_pairs(self, scored_pairs_df: DataFrame, path: str | None = None) -> None:
-        """Write scored pairs to storage"""
-        pass
-    
-    @abstractmethod
-    def write_metadata(self, metadata: Dict[str, Any], path: str | None = None) -> None:
-        """Write metadata to storage"""
-        pass
 
 # ═══════════════════════════════════════════════════════════════════════════
 # LOGGING INTERFACE (Already exists - shown for reference)
