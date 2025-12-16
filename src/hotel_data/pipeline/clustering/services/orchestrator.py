@@ -28,7 +28,7 @@ class HotelClusteringOrchestrator:
     def __init__(
         self,
         scorer: ScoringStrategy,
-        conflict_detector: ConflictDetectionStrategy,
+        # conflict_detector: ConflictDetectionStrategy,
         clusterer: ClusteringStrategy,
         metadata_recorder: MetadataRecorder,
         writer: TableIO,
@@ -46,7 +46,7 @@ class HotelClusteringOrchestrator:
             logger: Logger
         """
         self.scorer = scorer
-        self.conflict_detector = conflict_detector
+        # self.conflict_detector = conflict_detector
         self.clusterer = clusterer
         self.metadata_recorder = metadata_recorder
         self.writer = writer
@@ -58,7 +58,7 @@ class HotelClusteringOrchestrator:
         self.logger.info(
             "HotelClusteringOrchestrator initialized",
             scorer=type(scorer).__name__,
-            conflict_detector=type(conflict_detector).__name__,
+            # conflict_detector=type(conflict_detector).__name__,
             clusterer=type(clusterer).__name__,
             metadata_recorder=type(metadata_recorder).__name__,
             writer=type(writer).__name__
@@ -78,10 +78,8 @@ class HotelClusteringOrchestrator:
         
         Processes hotels and pairs through entire pipeline:
         1. Score pairs
-        2. Detect conflicts
-        3. Create clusters
-        4. Record metadata
-        5. Write results
+        2. Create clusters
+        3. Write Results with metadata
         
         Args:
             hotels_df: DataFrame with hotel data
@@ -108,12 +106,6 @@ class HotelClusteringOrchestrator:
                 hotel_count=hotels_df.count(),
                 pair_count=pairs_df.count()
             )
-            # ═════════════════════════════════════════════════════════════════
-            # PHASE 0: DEBUG SETUP
-            # ═════════════════════════════════════════════════════════════════
-            
-            self.logger.info("Phase 0: Initializing debug output...")
-        
             
             # ═════════════════════════════════════════════════════════════
             # PHASE 1: SCORE PAIRS
@@ -123,23 +115,9 @@ class HotelClusteringOrchestrator:
             scored_pairs_df = self._phase_score(pairs_df)
             self.logger.debug(f"Scored {scored_pairs_df.count()} pairs")
             
-            # ═════════════════════════════════════════════════════════════
-            # PHASE 2: DETECT CONFLICTS
-            # ═════════════════════════════════════════════════════════════
-            
-            # self.logger.info("PHASE 2: Detecting conflicts...")
-            # conflicts_df = self._phase_detect_conflicts(scored_pairs_df)
-            # self.logger.debug(f"Detected conflicts in {conflicts_df.count()} pairs")
-
             
             # ═════════════════════════════════════════════════════════════
-            # PHASE 3: Conflict Resolution
-            # ═════════════════════════════════════════════════════════════
-            # clean_pairs = self._phase_conflict_resolution(conflicts_df)
-            # self.logger.debug(f"Conflicts resolution in {clean_pairs.count()} pairs")
-            
-            # ═════════════════════════════════════════════════════════════
-            # PHASE 4: CREATE CLUSTERS
+            # PHASE 2: CREATE CLUSTERS
             # ═════════════════════════════════════════════════════════════
             
             # self.logger.info("PHASE 3: Creating clusters...")
@@ -148,21 +126,10 @@ class HotelClusteringOrchestrator:
 
             
             # ═════════════════════════════════════════════════════════════
-            # PHASE 5: RECORD METADATA
+            # PHASE 3: WRITE RESULTS
             # ═════════════════════════════════════════════════════════════
             
-            # self.logger.info("PHASE 4: Recording metadata...")
-            # metadata = self._phase_metadata(
-            #     clusters_df,
-            #     scored_pairs_df,
-            #     None
-            # )
-            
-            # ═════════════════════════════════════════════════════════════
-            # PHASE 5: WRITE RESULTS
-            # ═════════════════════════════════════════════════════════════
-            
-            self.logger.info("PHASE 5: Writing results...")
+            self.logger.info("PHASE 3: Writing results...")
             self._phase_write(scored_pairs_df, clusters_df, None)
 
             
@@ -236,30 +203,30 @@ class HotelClusteringOrchestrator:
         
         return scored_df
     
-    def _phase_detect_conflicts(self, scored_pairs_df: DataFrame) -> DataFrame:
-        """
-        PHASE 2: Detect conflicts in scored pairs
+    # def _phase_detect_conflicts(self, scored_pairs_df: DataFrame) -> DataFrame:
+    #     """
+    #     PHASE 2: Detect conflicts in scored pairs
         
-        Input: scored_pairs_df
-        Output: pairs with conflict flags (has_conflict, conflict_reason)
-        """
-        self.logger.debug("Detecting conflicts in pairs")
+    #     Input: scored_pairs_df
+    #     Output: pairs with conflict flags (has_conflict, conflict_reason)
+    #     """
+    #     self.logger.debug("Detecting conflicts in pairs")
         
-        conflicts_df = self.conflict_detector.detect_conflicts(scored_pairs_df)
+    #     conflicts_df = self.conflict_detector.detect_conflicts(scored_pairs_df)
         
-        conflicts_count = conflicts_df.filter("has_conflict").count()
+    #     conflicts_count = conflicts_df.filter("has_conflict").count()
         
-        self.logger.info(
-            "Conflict detection complete",
-            conflicts_found=conflicts_count,
-            valid_pairs=conflicts_df.filter("not has_conflict").count()
-        )
+    #     self.logger.info(
+    #         "Conflict detection complete",
+    #         conflicts_found=conflicts_count,
+    #         valid_pairs=conflicts_df.filter("not has_conflict").count()
+    #     )
         
-        return conflicts_df
+    #     return conflicts_df
     
     def _phase_cluster(self, hotels_df: DataFrame, scored_pairs_df: DataFrame) -> DataFrame:
         """
-        PHASE 3: Create clusters from scored pairs
+        PHASE: Create clusters from scored pairs
         
         Input: scored_pairs_df
         Output: clusters_df with cluster assignments (id, cluster_id, is_representative)
@@ -281,68 +248,68 @@ class HotelClusteringOrchestrator:
         
         return clusters_df
     
-    def _phase_metadata(
-        self,
-        clusters_df,  # Actually: scored pairs WITH cluster_id
-        scored_pairs_df,  # Scored pairs
-        conflicts_df  # Conflicts
-    ):
-        """
-        PHASE 4: Record metadata and statistics
+    # def _phase_metadata(
+    #     self,
+    #     clusters_df,  # Actually: scored pairs WITH cluster_id
+    #     scored_pairs_df,  # Scored pairs
+    #     conflicts_df  # Conflicts
+    # ):
+    #     """
+    #     PHASE 4: Record metadata and statistics
         
-        With validation to handle missing cluster_id
-        """
-        self.logger.debug("Recording metadata...")
-        metadata = self.metadata_recorder.get_metrics(
-            clusters_df=clusters_df,
-            scored_pairs_df=scored_pairs_df,
-            conflicts_df=conflicts_df
-        )
-        return metadata
+    #     With validation to handle missing cluster_id
+    #     """
+    #     self.logger.debug("Recording metadata...")
+    #     metadata = self.metadata_recorder.get_metrics(
+    #         clusters_df=clusters_df,
+    #         scored_pairs_df=scored_pairs_df,
+    #         conflicts_df=conflicts_df
+    #     )
+    #     return metadata
 
 
     
-    def _phase_conflict_resolution(
-        self,
-        conflicts_df: DataFrame
-    ) -> DataFrame:
-        """
-        PHASE 3: Resolve detected conflicts
+    # def _phase_conflict_resolution(
+    #     self,
+    #     conflicts_df: DataFrame
+    # ) -> DataFrame:
+    #     """
+    #     PHASE 3: Resolve detected conflicts
         
-        NOTE: Currently DISABLED - returns non-conflict pairs only
+    #     NOTE: Currently DISABLED - returns non-conflict pairs only
         
-        Future Implementation:
-        - Analyze conflicting pairs
-        - Choose winning pair based on scores
-        - Merge cluster assignments
-        - Return resolved pairs
+    #     Future Implementation:
+    #     - Analyze conflicting pairs
+    #     - Choose winning pair based on scores
+    #     - Merge cluster assignments
+    #     - Return resolved pairs
         
-        Args:
-            conflicts_df: DataFrame with has_conflict column
+    #     Args:
+    #         conflicts_df: DataFrame with has_conflict column
         
-        Returns:
-            DataFrame with conflicts resolved (currently just non-conflict rows)
-        """
-        self.logger.info("Conflict resolution phase (currently disabled)")
+    #     Returns:
+    #         DataFrame with conflicts resolved (currently just non-conflict rows)
+    #     """
+    #     self.logger.info("Conflict resolution phase (currently disabled)")
         
-        # For now, just return pairs without conflicts
-        try:
-            if "has_conflict" in conflicts_df.columns:
-                self.conflict_detector.resolve_conflicts(conflicts_df)
-                resolved_df = conflicts_df.filter("NOT has_conflict")
-                conflict_count = conflicts_df.filter("has_conflict").count()
-                self.logger.info(
-                    f"Skipped {conflict_count} conflict pairs, returning clean pairs"
-                )
-                return resolved_df
-            else:
-                # No conflict column, return as-is
-                self.logger.warning("has_conflict column not found in conflicts_df")
-                return conflicts_df
+    #     # For now, just return pairs without conflicts
+    #     try:
+    #         if "has_conflict" in conflicts_df.columns:
+    #             self.conflict_detector.resolve_conflicts(conflicts_df)
+    #             resolved_df = conflicts_df.filter("NOT has_conflict")
+    #             conflict_count = conflicts_df.filter("has_conflict").count()
+    #             self.logger.info(
+    #                 f"Skipped {conflict_count} conflict pairs, returning clean pairs"
+    #             )
+    #             return resolved_df
+    #         else:
+    #             # No conflict column, return as-is
+    #             self.logger.warning("has_conflict column not found in conflicts_df")
+    #             return conflicts_df
         
-        except Exception as e:
-            self.logger.error(f"Conflict resolution failed: {str(e)}")
-            raise
+    #     except Exception as e:
+    #         self.logger.error(f"Conflict resolution failed: {str(e)}")
+    #         raise
 
 
 
@@ -354,7 +321,7 @@ class HotelClusteringOrchestrator:
         metadata: Dict[str, Any] | None
     ) -> None:
         """
-        PHASE 5: Write results to storage
+        PHASE: Write results to storage
         
         Single write point for all outputs:
         - 02_scored_pairs: Scored pairs with composite scores
@@ -385,7 +352,7 @@ class HotelClusteringOrchestrator:
         """Verify all services are ready"""
         try:
             assert self.scorer is not None, "Scorer not initialized"
-            assert self.conflict_detector is not None, "Conflict detector not initialized"
+            # assert self.conflict_detector is not None, "Conflict detector not initialized"
             assert self.clusterer is not None, "Clusterer not initialized"
             assert self.metadata_recorder is not None, "Metadata recorder not initialized"
             assert self.writer is not None, "Writer not initialized"

@@ -33,45 +33,6 @@ class ComprehensiveMetadataRecorder(MetadataRecorder):
         self.spark = spark
         self.processing_start_time = datetime.now()
     
-    def get_metrics(
-        self,
-        clusters_df: DataFrame,
-        scored_pairs_df: DataFrame,
-        conflicts_df: DataFrame
-    ) -> Dict[str, Any]:
-        """
-        Record comprehensive metadata from pipeline execution
-        
-        Args:
-            clustersdf: Clustered hotel pairs DataFrame
-            scored_pairs_df: Scored pairs DataFrame
-            conflicts_df: Conflicts DataFrame
-            
-        Returns:
-            Dict with all pipeline metadata
-        """
-        self.spark = clusters_df.sparkSession
-        metadata = {}
-        
-        try:
-            self.logger.info("Recording comprehensive metadata...")
-            
-            self.logger.info(
-                f"✓ Metadata recorded successfully",
-                metrics_count=len(metadata),
-                timestamp=metadata.get('processing_timestamp')
-            )
-            
-            return metadata
-            
-        except Exception as e:
-            self.logger.error(f"Metadata recording failed: {str(e)}")
-            return {
-                'total_clusters': 0,
-                'total_pairs': 0,
-                'error': str(e)
-            }
-    
     def record_metadata(self, 
         scored_pairs_df: DataFrame,
         clusters_df: DataFrame,

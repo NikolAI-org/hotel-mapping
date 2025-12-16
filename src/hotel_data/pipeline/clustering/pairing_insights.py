@@ -20,7 +20,7 @@ spark = (
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -60,130 +60,94 @@ final_cluster_df = manager.read_table("06_final_clusters")
     
 scored_pair_df = manager.read_table("02_scored_pairs")
 
-## ============================================================================
-# STEP 1: Aggregate pairing information for each hotel name
+
+metric_schema = StructType([
+    StructField("actual", DoubleType(), True),
+    StructField("threshold", DoubleType(), True),
+    StructField("comparator", StringType(), True),
+    StructField("passed", BooleanType(), True)
+])
+
+# 2. DEFINE THE FULL METADATA SCHEMA
+# This maps each key specifically so Spark preserves the names
+full_metadata_schema = StructType([
+    StructField("geo_distance_km", metric_schema, True),
+    StructField("name_score_jaccard_lcs", metric_schema, True),
+    StructField("normalized_name_score_sbert", metric_schema, True),
+    StructField("star_ratings_score", metric_schema, True),
+    StructField("address_line1_score", metric_schema, True),
+    StructField("postal_code_match", metric_schema, True),
+    StructField("country_match", metric_schema, True),
+    StructField("address_sbert_score", metric_schema, True),
+    StructField("phone_match_score", metric_schema, True),
+    StructField("email_match_score", metric_schema, True),
+    StructField("fax_match_score", metric_schema, True)
+])
+
+# ============================================================================
+# STEP 1 & 2: Parse and Aggregate
 # ============================================================================
 
-# Get pairing details for each hotel (aggregating by name_i and name_j)
-pairing_details = scored_pair_df.groupBy("name_i").agg(
-    F.collect_list(F.struct(
-        F.col("name_j").alias("paired_hotel_name"),
-        F.col("is_matched").alias("match_status"),
-        F.col("scoring_metadata").alias("scoring_metadata")
-    )).alias("paired_with"),
-    F.count("*").alias("total_paired_hotels")
-).select(
+# Convert the string column 'scoring_metadata' into a structured object
+pairing_summary = scored_pair_df.select(
     F.col("name_i").alias("hotel_name"),
-    F.col("total_paired_hotels"),
-    F.col("paired_with")
-)
-
-# ============================================================================
-# STEP 2: Extract condition pass/fail details for matched vs unmatched
-# ============================================================================
-
-# Get all condition columns (those ending with "_passed")
-condition_columns = [col for col in scored_pair_df.columns if col.endswith("_passed")]
-
-# Create a condition summary for each pair
-condition_summary = scored_pair_df.select(
-    F.col("name_i"),
-    F.col("name_j"),
-    F.col("is_matched"),
-    F.col("match_status"),
     F.struct(
-        *[F.col(col).alias(col.replace("_passed", "")) for col in condition_columns]
-    ).alias("condition_results")
-)
-
-# Aggregate conditions by hotel name_i
-conditions_by_hotel = condition_summary.groupBy("name_i").agg(
-    F.collect_list(F.struct(
         F.col("name_j").alias("paired_hotel_name"),
-        F.col("is_matched").alias("match_status"),
+        F.col("is_matched"),
         F.col("match_status").alias("match_reason"),
-        F.col("condition_results").alias("condition_results")
-    )).alias("pairing_conditions")
-).select(
-    F.col("name_i").alias("hotel_name"),
-    F.col("pairing_conditions")
+        # Use from_json with the full schema to keep all keys/labels
+        F.from_json(F.col("scoring_metadata"), full_metadata_schema).alias("scoring_metrics")
+    ).alias("pair_info")
+)
+
+# Aggregate into the final structure
+hotel_insights = pairing_summary.groupBy("hotel_name").agg(
+    F.count("*").alias("num_paired_hotels"),
+    F.collect_list("pair_info").alias("pairing_details")
 )
 
 # ============================================================================
-# STEP 3: Join pairing details with conditions
-# ============================================================================
-
-hotel_insights = pairing_details.join(
-    conditions_by_hotel,
-    on="hotel_name",
-    how="left"
-).select(
-    F.col("hotel_name"),
-    F.col("total_paired_hotels").alias("num_paired_hotels"),
-    F.col("pairing_conditions").alias("pairing_details")
-)
-
-# ============================================================================
-# STEP 4: Join with Final Cluster
+# STEP 3: Join and Reorder
 # ============================================================================
 
 final_cluster_with_insights = final_cluster_df.join(
     hotel_insights,
-    on=F.col("name") == F.col("hotel_name"),
+    on=final_cluster_df["name"] == hotel_insights["hotel_name"],
     how="left"
 ).drop("hotel_name")
 
-# Reorder columns - Final Cluster schema first, then insights
-final_cluster_columns = final_cluster_df.columns
+# Reorder columns: Cluster Info first, then Insights
 final_cluster_with_insights = final_cluster_with_insights.select(
-    *final_cluster_columns,
-    F.col("num_paired_hotels"),
-    F.col("pairing_details")
+    *final_cluster_df.columns,
+    "num_paired_hotels",
+    "pairing_details"
 )
 
-# ============================================================================
-# STEP 5: Display results
-# ============================================================================
-
-print("=" * 100)
-print("ENRICHED FINAL CLUSTER WITH PAIRING INSIGHTS")
-print("=" * 100)
-final_cluster_with_insights.show(truncate=False)
-
-print("\n" + "=" * 100)
-print("SCHEMA OF ENRICHED FINAL CLUSTER")
-print("=" * 100)
+# Display the structured schema to confirm keys are present
 final_cluster_with_insights.printSchema()
 
 # ============================================================================
-# Optional: Save the enriched table
-# ============================================================================
-# final_cluster_with_insights.write.mode("overwrite").parquet("path/to/output/final_cluster_enriched")
-
-# ============================================================================
-# Optional: Flatten the insights for easier viewing
+# STEP 4: Display & Sample View
 # ============================================================================
 
 print("\n" + "=" * 100)
-print("SAMPLE INSIGHTS (Expanded View)")
+print("SAMPLE INSIGHTS - DOT NOTATION VERIFIED")
 print("=" * 100)
 
-# Explode the pairing_details to see each pair separately
 sample_view = final_cluster_with_insights.select(
     F.col("name"),
-    F.col("num_paired_hotels"),
-    F.explode(F.col("pairing_details")).alias("pair_info")
+    F.explode(F.col("pairing_details")).alias("pair")
 ).select(
-    F.col("name").alias("hotel_name"),
-    F.col("num_paired_hotels"),
-    F.col("pair_info.paired_hotel_name").alias("paired_with_hotel"),
-    F.col("pair_info.match_status").alias("is_matched"),
-    F.col("pair_info.match_reason").alias("match_reason"),
-    F.col("pair_info.condition_results").alias("conditions")
+    F.col("name").alias("hotel"),
+    F.col("pair.paired_hotel_name").alias("paired_with"),
+    F.col("pair.is_matched"),
+    # Accessing specifically named field 'scoring_metrics'
+    F.col("pair.scoring_metrics.geo_distance_km.actual").alias("dist_km"),
+    F.col("pair.scoring_metrics.name_score_jaccard_lcs.actual").alias("name_score"),
+    F.col("pair.scoring_metrics.address_line1_score.passed").alias("addr_passed")
 )
 
 sample_view.show(truncate=False)
 
-final_cluster_with_insights.printSchema()
-
+# Write the result
 writer.write(final_cluster_with_insights, "final_cluster_insights")

@@ -19,7 +19,9 @@ class ThresholdScoringStrategy(ScoringStrategy):
     SIGNAL_COLUMNS = [ 
                       "geo_distance_km", 
                       "name_score_jaccard_lcs", 
-                      "normalized_name_score_sbert", 
+                      "normalized_name_score_jaccard_lcs",
+                      "name_score_sbert",
+                      "normalized_name_score_sbert",
                       "star_ratings_score", 
                       "address_line1_score", 
                       "postal_code_match", 
@@ -40,26 +42,28 @@ class ThresholdScoringStrategy(ScoringStrategy):
         
         self.logger.log("INFO", "ThresholdScoringStrategy initialized")
         
-        # NOTE: Using the provided values as MINIMUM THRESHOLDS for each signal.
-        # This will likely be sourced from config in a real scenario, but hardcoding for example.
         self.signal_thresholds = {
             "name_score_jaccard_lcs": self.config.thresholds.get('name_score_jaccard_lcs', 0.15),
-            "normalized_name_score_sbert": self.config.thresholds.get('normalized_name_score_sbert', 0.15),
-            "star_ratings_score": self.config.thresholds.get('star_ratings_score', 0.10),
-            "address_line1_score": self.config.thresholds.get('address_line1_score', 0.10),
-            "postal_code_match": self.config.thresholds.get('postal_code_match', 1),
-            "country_match": self.config.thresholds.get('country_match', 1),
-            "address_sbert_score": self.config.thresholds.get('address_sbert_score', 0.20),
-            "phone_match_score": self.config.thresholds.get('phone_match_score', 0.70),
-            "email_match_score": self.config.thresholds.get('email_match_score', 0.70),
-            "fax_match_score": self.config.thresholds.get('fax_match_score', 0.70),
-            "geo_distance_km": self.config.thresholds.get('geo_distance_km', 0.5) # This might need special handling (e.g., max distance)
+            "normalized_name_score_jaccard_lcs": self.config.thresholds.get('normalized_name_score_jaccard_lcs', 0.15),
+            "name_score_sbert": self.config.thresholds.get('name_score_sbert', 0.0),
+            "normalized_name_score_sbert": self.config.thresholds.get('normalized_name_score_sbert', 0.0),
+            "star_ratings_score": self.config.thresholds.get('star_ratings_score', 0.7),
+            "address_line1_score": self.config.thresholds.get('address_line1_score', 0.4),
+            "postal_code_match": self.config.thresholds.get('postal_code_match', 0.6),
+            "country_match": self.config.thresholds.get('country_match', 0.9),
+            "address_sbert_score": self.config.thresholds.get('address_sbert_score', 0.0),
+            "phone_match_score": self.config.thresholds.get('phone_match_score', 0.008),
+            "email_match_score": self.config.thresholds.get('email_match_score', 0.00004),
+            "fax_match_score": self.config.thresholds.get('fax_match_score', 0.0),
+            "geo_distance_km": self.config.thresholds.get('geo_distance_km', 0.5)
         }
         
         # Default comparators: all >= except geo_distance_km which uses <=
         self.signal_comparators = {
             "geo_distance_km": self.config.comparators.get("geo_distance_km", "lte"),
             "name_score_jaccard_lcs": self.config.comparators.get("name_score_jaccard_lcs", "gte"),
+            "normalized_name_score_jaccard_lcs": self.config.comparators.get("normalized_name_score_jaccard_lcs", "gte"),
+            "name_score_sbert": self.config.comparators.get("name_score_sbert", "gte"),
             "normalized_name_score_sbert": self.config.comparators.get("normalized_name_score_sbert", "gte"),
             "star_ratings_score": self.config.comparators.get("star_ratings_score", "gte"),
             "address_line1_score": self.config.comparators.get("address_line1_score", "gte"),
@@ -71,12 +75,6 @@ class ThresholdScoringStrategy(ScoringStrategy):
             "fax_match_score": self.config.comparators.get("fax_match_score", "gte"),
         }
 
-        
-        # For simplicity, all thresholds are assumed to be minimums (>=).
-        # geo_distance_km is typically a MAX distance, but we'll treat it as >= min score
-        # (after the signal is typically inverted/normalized to a score of [0, 1]).
-        # If it's a raw distance, the logic would need to be `col("geo_distance_km") <= threshold`.
-
     
     def score(self, pairs_df: DataFrame) -> DataFrame:
         """
@@ -85,8 +83,6 @@ class ThresholdScoringStrategy(ScoringStrategy):
         try:
             self.logger.log("INFO", "Starting threshold-based scoring (All Signals Must Pass)")
             
-            # NOTE: Skipping internal validation/clipping steps for conciseness, 
-            # but they should be uncommented in a production pipeline.
             df = pairs_df 
             
             # ═════════════════════════════════════════════════════════════
@@ -105,8 +101,6 @@ class ThresholdScoringStrategy(ScoringStrategy):
             df = (df
                 .withColumn("scoring_version", lit(self.SCORING_VERSION))
                 .withColumn("scoring_timestamp", current_timestamp())
-                # Clean up intermediate pass/fail columns if not needed downstream
-                # .drop(*[f"{s}_passed" for s in self.SIGNAL_COLUMNS]) 
             )
             
             self.logger.log("INFO", "Scoring completed successfully")

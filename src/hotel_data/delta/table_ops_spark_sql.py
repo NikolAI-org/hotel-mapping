@@ -27,7 +27,7 @@ spark = (
     .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
     # ---- S3/MinIO config ----
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
+    .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
     .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -72,22 +72,29 @@ manager = DeltaTableManager(
 
 # Optional fallback: direct path read (escape hatch)
 df = spark.read.format("delta").load(
-    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/02_scored_pairs"
+    f"{BASE_DELTA_PATH}/{SCHEMA_NAME}/hotels"
 )
-# df.select(F.col("address_sbert_score")).distinct().show()
-col1 = "normalized_name_score_sbert"
-col2 = "name_score_sbert"
-df.agg(
-    F.min(col1).alias(f"min_{col1}"),
-    F.max(col1).alias(f"max_{col1}"),
-    F.avg(col1).alias(f"avg_{col1}"),
-    F.min(col2).alias(f"min_{col2}"),
-    F.max(col2).alias(f"max_{col2}"),
-    F.avg(col2).alias(f"avg_{col2}"),
-).show(truncate=False)
+df.printSchema()
+
+# ===================================================
+# Caclulate the aggregated values from the table
+# ===================================================
+# col1 = "normalized_name_score_sbert"
+# col2 = "name_score_sbert"
+# df.agg(
+#     F.min(col1).alias(f"min_{col1}"),
+#     F.max(col1).alias(f"max_{col1}"),
+#     F.avg(col1).alias(f"avg_{col1}"),
+#     F.min(col2).alias(f"min_{col2}"),
+#     F.max(col2).alias(f"max_{col2}"),
+#     F.avg(col2).alias(f"avg_{col2}"),
+# ).show(truncate=False)
 # df.show(truncate=False,n=20)
 # df.filter((F.col("id_j") == "39698858") & (F.col("id_i") == "39698858")).select("name_i", "name_j").show()
 
+# ======================================================================
+# Print the schema and filter data for specif id from 06_final_clusters
+# ======================================================================
 # df.printSchema()
 # df = df.filter(F.col("id") == "39698858")
 # df.select("id", "name", "cluster_id", "providerId", "geoCode_lat",
@@ -103,6 +110,9 @@ df.agg(
 
 
 
+# ===================================================
+# Explore the data from 02_scored_pairs table
+# ===================================================
 # selected_names = [
 #     "lemon tree premier mumbai international airport",
 #     "lemon tree premier, mumbai international airport"
@@ -155,7 +165,9 @@ df.agg(
 
 
 
-# # Unique count of id and cluster id
+# ==========================================================
+# Unique count of id and cluster id from 06_final_clusters
+# ==========================================================
 # result_df = df.agg(
 #     F.countDistinct("id").alias("unique_id_count"),
 #     F.countDistinct("cluster_id").alias("unique_cluster_id_count")
@@ -163,7 +175,9 @@ df.agg(
 
 # result_df.show(truncate=False)
 
-# # # Fetch count of same id
+# ==========================================================
+# Group by Id from 06_final_clusters table
+# ==========================================================
 # id_counts_df = (
 #     df.select("id", "name", "cluster_id", "combined_address").groupBy("id")
 #       .agg(F.count("*").alias("record_count"))
@@ -172,7 +186,9 @@ df.agg(
 # )
 # id_counts_df.show()
 
-# # Fetch count of same cluster id
+# ==========================================================
+# Group by cluster_id from 06_final_clusters table
+# ==========================================================
 # cluster_id_counts_df = (
 #     df.select("id", "name", "cluster_id", "combined_address").groupBy("cluster_id")
 #       .agg(F.count("*").alias("record_count"))
@@ -181,6 +197,8 @@ df.agg(
 # )
 # cluster_id_counts_df.show()
 
-# # # Filter the records with id 
+# ==========================================================
+# Filter record for specific id from 06_final_clusters table
+# ========================================================== 
 # filtered_df = df.filter(F.col("id") == "39698858").select("name", "id", "cluster_id","geoCode_lat", "geoCode_long", "combined_address")
 # filtered_df.show(truncate=False)

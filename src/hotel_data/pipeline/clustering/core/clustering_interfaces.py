@@ -150,30 +150,7 @@ class ClusteringStrategy(ABC):
 
 class MetadataRecorder(ABC):
     """Interface for recording clustering metadata"""
-    
-    @abstractmethod
-    def get_metrics(
-        self,
-        clusters_df: DataFrame,
-        scored_pairs_df: DataFrame,
-        conflicts_df: DataFrame
-    ) -> Dict[str, Any]:
-        """
-        Record metadata about the clustering process
-        
-        Returns:
-            {
-                'total_hotels': int,
-                'total_pairs_scored': int,
-                'high_confidence_pairs': int,
-                'clusters_created': int,
-                'conflicts_detected': int,
-                'conflicts_resolved': int,
-                'processing_timestamp': str,
-                'version': str
-            }
-        """
-        pass
+
     
     @abstractmethod
     def record_metadata(self, 

@@ -7,35 +7,21 @@ storage:
   minio_bucket: "hotel-data"
   delta_path: "s3a://hotel-data/delta"
 
-scoring:
-  weights:
-    geo_distance_km: 0.15
-    normalized_name_score_sbert: 0.20
-    name_score_jaccard_lcs: 0.20
-    star_ratings_score: 0.05
-    address_sbert_score: 0.15
-    phone_match_score: 0.10
-    postal_code_match: 0.05
-    country_match: 0.05
-    email_match_score: 0.05
-  
+scoring:  
   thresholds:
     geo_distance_km: 0.5
     name_score_jaccard_lcs: 0.18
-    normalized_name_score_jaccard_lcs: 0.0
+    normalized_name_score_jaccard_lcs: 0.18
     name_score_sbert: 0.0
     normalized_name_score_sbert: 0.0
-    star_ratings_score: 0.5
+    star_ratings_score: 0.7
     address_line1_score: 0.4
     postal_code_match: 0.6
     country_match: 0.90
     address_sbert_score: 0.0
-    phone_match_score: 0.0
-    email_match_score: 0.0
+    phone_match_score: 0.008
+    email_match_score: 0.00004
     fax_match_score: 0.0
-    high_confidence: 0.85
-    medium_confidence: 0.70
-    low_confidence: 0.55
 
   # Values can be lte, gte, gt, lt
   comparators:
@@ -52,53 +38,11 @@ scoring:
       phone_match_score: gte
       email_match_score: gte
       fax_match_score: gte
-  
-  exclusion_rules:
-    max_geo_distance_km: 5.0
-    min_country_match: 1.0
-    min_normalized_name_score: 0.3
 
-conflict_detection:
-  enabled: true
-  confidence_threshold: 0.70
-  conflict_tolerance: 0.15
-  max_chain_length: 3
-  resolution_strategy: "remove_weakest"  # Options: remove_weakest, remove_all, adjust_confidence, break_chain
-  
-  # Detection flags
-  detect_transitive: true
-  detect_chains: true
-  
-  # Reporting
-  report_details: true
-  save_conflicts: true
 
 clustering:
   algorithm: unionfind
   # Options could be labelpropagation, leiden, unionfind
-  # PRE Existing (unchanged)
-  min_score_threshold: 0.50
-  max_cluster_size: null
-  # Existing (unchanged)
-  score_threshold: 0.50
-  confidence_threshold: 2
-  min_cluster_size: 1
-  
-  # NEW: Black hole detection
-  enable_black_hole_prevention: true
-    # Default: true (enable detection)
-    # Set to false to disable BH detection
-    
-  black_hole_max_threshold: 0.95
-    # Default: 0.95 (very high similarity)
-    # Pairs with score >= 0.95 flagged as potential black holes
-    # Increase to 0.98 for more strict BH detection
-    # Decrease to 0.90 for more lenient
-    
-  black_hole_min_size: 2
-    # Default: 2 (pair appears in 1-2 matches)
-    # Hotels appearing in <=2 pairs considered isolated
-    # Increase to 3 or 4 for more aggressive isolation
 
 streaming:
   enabled: false

@@ -5,98 +5,24 @@ from typing import Dict, Optional
 class ScoringConfig:
     """Configuration for scoring strategy"""
     
-    weights: Dict[str, float]
-    # Example:
-    # {
-    #   'geo_distance_km': 0.15,
-    #   'name_score_sbert': 0.25,
-    #   ...
-    # }
-    
     thresholds: Dict[str, float]
-    # Example:
-    # {
-    #   'high_confidence': 0.85,
-    #   'medium_confidence': 0.70,
-    #   'low_confidence': 0.55
-    # }
     
     comparators: Dict[str, float]
-    
-    exclusion_rules: Dict[str, float]
-    # Example:
-    # {
-    #   'max_geo_distance_km': 5.0,
-    #   'min_country_match': 1.0,
-    #   'min_normalized_name_score': 0.3
-    # }
     
     def validate(self) -> bool:
         """
         Validate scoring config with detailed error reporting
         """
-        # ════════════════════════════════════════════════════════════════
-        # CHECK 1: Weights sum to ~1.0 (with tolerance)
-        # ════════════════════════════════════════════════════════════════
-        
-        total_weight = sum(self.weights.values())
-        tolerance = 0.01  # Allow ±1% deviation
-        
-        if not (1.0 - tolerance <= total_weight <= 1.0 + tolerance):
-            raise ValueError(
-                f"Weights must sum to 1.0 (±{tolerance}), got {total_weight}. "
-                f"Weights: {self.weights}"
-            )
-        
-        # ════════════════════════════════════════════════════════════════
-        # CHECK 2: All weights are positive
-        # ════════════════════════════════════════════════════════════════
-        
-        for signal_name, weight in self.weights.items():
-            if weight < 0:
-                raise ValueError(
-                    f"Weight for '{signal_name}' is negative: {weight}"
-                )
-            if weight > 1.0:
-                raise ValueError(
-                    f"Weight for '{signal_name}' exceeds 1.0: {weight}"
-                )
-        
-        # ════════════════════════════════════════════════════════════════
-        # CHECK 3: Thresholds are in correct order (high > medium > low)
-        # ════════════════════════════════════════════════════════════════
-        
-        high = self.thresholds.get('high_confidence', 0.85)
-        medium = self.thresholds.get('medium_confidence', 0.70)
-        low = self.thresholds.get('low_confidence', 0.55)
-        
-        if not (high > medium > low):
-            raise ValueError(
-                f"Threshold order incorrect: "
-                f"high({high}) > medium({medium}) > low({low}). "
-                f"Require: high > medium > low"
-            )
         
         # ════════════════════════════════════════════════════════════════
         # CHECK 4: All thresholds in valid range
         # ════════════════════════════════════════════════════════════════
         
         for threshold_name, threshold_value in self.thresholds.items():
-            if not (0.0 <= threshold_value <= 1.0):
+            if not (-1.0 <= threshold_value <= 1.0):
                 raise ValueError(
-                    f"Threshold '{threshold_name}' outside [0, 1]: {threshold_value}"
+                    f"Threshold '{threshold_name}' outside [-1, 1]: {threshold_value}"
                 )
-        
-        # ════════════════════════════════════════════════════════════════
-        # CHECK 5: Exclusion rules have valid values
-        # ════════════════════════════════════════════════════════════════
-        
-        if self.exclusion_rules:
-            for rule_name, rule_value in self.exclusion_rules.items():
-                if rule_value < 0:
-                    raise ValueError(
-                        f"Exclusion rule '{rule_name}' has negative value: {rule_value}"
-                    )
         
         return True
 
@@ -123,22 +49,13 @@ class StorageConfig:
 @dataclass
 class ClusteringConfig:
     """Configuration for clustering strategy"""
-    
-    min_score_threshold: float   # e.g., 0.70 (minimum composite score to cluster)
-    max_cluster_size: Optional[int]  # e.g., None (no limit)
-    enable_black_hole_prevention: bool  # e.g., True
-    black_hole_max_threshold: float     # e.g., 0.95
-    score_threshold: float
-    confidence_threshold: float
-    min_cluster_size: int
-    black_hole_min_size: int
     algorithm: str
     
     
     def validate(self) -> bool:
         """Validate clustering config"""
-        if not (0.0 <= self.min_score_threshold <= 1.0):
-            raise ValueError("min_score_threshold must be in [0, 1]")
+        if not self.algorithm:
+            raise ValueError("algorithm must be specified")
         return True    
 
 @dataclass

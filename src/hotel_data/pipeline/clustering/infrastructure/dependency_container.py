@@ -174,21 +174,21 @@ class DependencyContainer:
             logger=logger
         )
     
-    @staticmethod
-    def get_conflict_detector():
-        """Factory method for conflict detector"""
-        config = DependencyContainer.get_config()
-        logger = DependencyContainer.get_logger()
+    # @staticmethod
+    # def get_conflict_detector():
+    #     """Factory method for conflict detector"""
+    #     config = DependencyContainer.get_config()
+    #     logger = DependencyContainer.get_logger()
         
-        from hotel_data.pipeline.clustering.services.conflict_service import TransitiveConflictDetector
+    #     from hotel_data.pipeline.clustering.services.conflict_service import TransitiveConflictDetector
         
-        return TransitiveConflictDetector(
-            logger=logger,
-            confidence_threshold=config.scoring.thresholds.get('medium_confidence', 0.70),
-            conflict_tolerance=0.15,  # 15% score drop tolerance
-            max_chain_length=3,  # Prevent chains longer than 3
-            resolution_strategy="remove_weakest"  # Default strategy
-        )
+    #     return TransitiveConflictDetector(
+    #         logger=logger,
+    #         confidence_threshold=config.scoring.thresholds.get('medium_confidence', 0.70),
+    #         conflict_tolerance=0.15,  # 15% score drop tolerance
+    #         max_chain_length=3,  # Prevent chains longer than 3
+    #         resolution_strategy="remove_weakest"  # Default strategy
+    #     )
     
     @staticmethod
     def get_clusterer():
@@ -235,26 +235,6 @@ class DependencyContainer:
             spark=spark,
             logger=logger
         )
-    
-    @staticmethod
-    def get_cluster_writer():
-        """Factory method for cluster writer"""
-        config = DependencyContainer.get_config()
-        logger = DependencyContainer.get_logger()
-        spark = DependencyContainer.get_spark()
-        
-        
-        # return DeltaLakeWriter(
-        #     config=config.storage,
-        #     spark=spark,
-        #     logger=logger
-        # )
-        
-        from hotel_data.pipeline.clustering.services.stub_services import StubClusterWriter
-        return StubClusterWriter(
-            logger=logger,
-            config=config.storage
-        )
 
     
     @staticmethod
@@ -266,7 +246,7 @@ class DependencyContainer:
         
         orchestrator = HotelClusteringOrchestrator(
             scorer=DependencyContainer.get_scoring_service(),
-            conflict_detector=DependencyContainer.get_conflict_detector(),
+            # conflict_detector=DependencyContainer.get_conflict_detector(),
             clusterer=DependencyContainer.get_clusterer(),
             metadata_recorder=DependencyContainer.get_metadata_recorder(),
             writer=DependencyContainer.get_output_writer("all"),  # ← Unified!
