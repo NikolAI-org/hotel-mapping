@@ -19,8 +19,8 @@ scoring:
     postal_code_match: 0.6
     country_match: 0.90
     address_sbert_score: 0.0
-    phone_match_score: 0.008
-    email_match_score: 0.00004
+    phone_match_score: 0.0
+    email_match_score: 0.0
     fax_match_score: 0.0
 
   # Values can be lte, gte, gt, lt

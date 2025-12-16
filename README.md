@@ -149,6 +149,35 @@ Generate the insights: poetry run python -m hotel_data.pipeline.clustering.pairi
 +----------------------------------------+---------+-------+
 - Clustering can be done using two algorithm: unionfind, labelpropagation
 
+
+# PySpark Shell
+- Run the program
+```
+poetry run python -m hotel_data.delta.spark_shell
+```
+- Create temporary view of the table per session
+```
+spark.sql("CREATE OR REPLACE TEMP VIEW b_hotels USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/hotels')")
+
+spark.sql("CREATE OR REPLACE TEMP VIEW b_hotel_pairs USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/hotel_pairs')")
+
+spark.sql("CREATE OR REPLACE TEMP VIEW b_scored_pairs USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/02_scored_pairs')")
+
+spark.sql("CREATE OR REPLACE TEMP VIEW b_final_clusters USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/06_final_clusters')")
+
+spark.sql("CREATE OR REPLACE TEMP VIEW b_insights USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/final_cluster_insights')")
+```
+- Query the table
+```
+spark.sql("select * from b_hotels limit 1").show()
+```
+- Clear the screen
+```
+import os
+os.system("clear")
+```
+
+
 # Minikube Setup
 * Start Minikube
     ```
