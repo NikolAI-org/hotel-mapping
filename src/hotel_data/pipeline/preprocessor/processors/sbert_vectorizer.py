@@ -1,45 +1,57 @@
+from pyspark.sql.functions import struct
+
 import pandas as pd
+import torch
+from sentence_transformers import SentenceTransformer
 from pyspark.sql.functions import pandas_udf
-from pyspark.sql.types import ArrayType, FloatType
+from pyspark.sql.types import ArrayType, FloatType, StructType, StructField
 from typing import Iterator
+from pyspark.sql.functions import PandasUDFType
 
 
-# 1. Define the Generator UDF
-# Using Iterator[pd.Series] -> Iterator[pd.Series] ensures the model loads ONCE per partition
-@pandas_udf(ArrayType(FloatType()))
-def compute_sbert_embeddings(iterator: Iterator[pd.Series]) -> Iterator[pd.Series]:
-    # Import inside function to avoid serialization issues on driver
+
+# Define the schema for the returned embeddings
+embedding_schema = StructType([
+    StructField("name_embedding", ArrayType(FloatType())),
+    StructField("normalized_name_embedding", ArrayType(FloatType())),
+    StructField("address_embedding", ArrayType(FloatType()))
+])
+
+_model_cache = None
+
+@pandas_udf(embedding_schema, "map_iter") # type: ignore
+def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
+    import os
+    # Reduce thread contention
+    os.environ["OMP_NUM_THREADS"] = "1" 
+    
     from sentence_transformers import SentenceTransformer
     import torch
-
-    # Load model once per partition (worker task)
-    # 'all-MiniLM-L6-v2' is small, fast, and great for short text like hotel names
-    # Note: Ensure workers have internet access to download from HuggingFace,
-    # or broadcast the model folder using SparkFiles if offline.
+    
+    # Singleton Model
     model = SentenceTransformer('all-MiniLM-L6-v2')
+    # Use CPU if your local GPU RAM is low (GPU OOMs often cause connection resets)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device)
 
-    # Optional: Enable GPU if available on workers
-    if torch.cuda.is_available():
-        print("cuda model available")
-        model = model.to('cuda')
-    else:
-        print("cuda model not available")
-
-    for series in iterator:
-        # Batch encode the entire pandas series
-        # normalize_embeddings=True ensures dot_product == cosine_similarity later
-        embeddings = model.encode(
-            series.tolist(),
-            batch_size=128,
-            show_progress_bar=False,
-            normalize_embeddings=True
-        )
-        yield pd.Series(embeddings.tolist())
-
-
-# 2. Integration Function
-def add_sbert_vectors(df, input_col="name", output_col="name_embedding"):
-    """
-    Applies the SBERT UDF to the dataframe.
-    """
-    return df.withColumn(output_col, compute_sbert_embeddings(input_col))
+    for pdf in iterator:
+        # We use a very small internal batch size to keep memory stable
+        encoding_kwargs = {
+            "batch_size": 16, 
+            "show_progress_bar": False,
+            "convert_to_numpy": True
+        }
+        
+        name_vecs = model.encode(pdf['name'].fillna("").tolist(), **encoding_kwargs).tolist()
+        norm_vecs = model.encode(pdf['normalized_name'].fillna("").tolist(), **encoding_kwargs).tolist()
+        addr_vecs = model.encode(pdf['combined_address'].fillna("").tolist(), **encoding_kwargs).tolist()
+        
+        yield pd.DataFrame({
+            "name_embedding": name_vecs,
+            "normalized_name_embedding": norm_vecs,
+            "address_embedding": addr_vecs
+        })
+        
+        # Explicitly clear internal cache if using GPU
+        if device == "cuda":
+            torch.cuda.empty_cache()

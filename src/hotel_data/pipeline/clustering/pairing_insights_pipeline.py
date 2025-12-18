@@ -20,7 +20,7 @@ spark = (
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -95,6 +95,7 @@ pairing_summary = scored_pair_df.select(
         F.col("name_j").alias("paired_hotel_name"),
         F.col("is_matched"),
         F.col("match_status").alias("match_reason"),
+        F.col("combined_address_j").alias("combined_address"),
         # Use from_json with the full schema to keep all keys/labels
         F.from_json(F.col("scoring_metadata"), full_metadata_schema).alias("scoring_metrics")
     ).alias("pair_info")

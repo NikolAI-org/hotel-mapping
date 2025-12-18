@@ -12,13 +12,13 @@ scoring:
     geo_distance_km: 0.5
     name_score_jaccard_lcs: 0.18
     normalized_name_score_jaccard_lcs: 0.18
-    name_score_sbert: 0.0
-    normalized_name_score_sbert: 0.0
+    name_score_sbert: 0.8
+    normalized_name_score_sbert: 0.8
     star_ratings_score: 0.7
-    address_line1_score: 0.4
+    address_line1_score: 0.8
     postal_code_match: 0.6
     country_match: 0.90
-    address_sbert_score: 0.0
+    address_sbert_score: 0.8
     phone_match_score: 0.0
     email_match_score: 0.0
     fax_match_score: 0.0

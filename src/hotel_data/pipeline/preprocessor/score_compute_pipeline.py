@@ -33,7 +33,7 @@ def main():
         .config("spark.sql.warehouse.dir", WAREHOUSE_DIR)
         # ---- S3/MinIO config ----
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
@@ -102,7 +102,7 @@ def main():
     manager.create_table(TABLE_HOTELS_PAIRS_NAME, empty_df, comment="Hotel pairwise scores")
 
     # Write scored pairs
-    manager.write_table(table_name=TABLE_HOTELS_PAIRS_NAME, df=scored_pairs_df, merge_schema="false", overwrite_schema="false")
+    manager.write_table(table_name=TABLE_HOTELS_PAIRS_NAME, df=scored_pairs_df, merge_schema="true", overwrite_schema="true")
     print(f"✅ Written {scored_pairs_df.count()} rows to {TABLE_HOTELS_PAIRS}")
 
     spark.stop()

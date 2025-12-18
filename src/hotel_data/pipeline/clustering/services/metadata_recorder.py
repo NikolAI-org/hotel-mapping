@@ -51,8 +51,6 @@ class ComprehensiveMetadataRecorder(MetadataRecorder):
                 scored_pairs_df,
                 "02_scored_pairs"
             )
-            self.logger.info("Scored Pair Schema")
-            self.logger.info(scored_pairs_df.printSchema())
             
             # ════════════════════════════════════════════════════════════════════
             # WRITE 2: Final Clusters

@@ -53,7 +53,7 @@ def create_spark() -> SparkSession:
 
         # S3 / MinIO
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://172.16.16.152:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://192.168.1.4:9000")
         .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")

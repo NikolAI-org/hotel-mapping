@@ -15,16 +15,18 @@ from pyspark.sql import functions as F
 
 
 def get_cosine_similarity_expr(col_a, col_b):
-    """
-    Returns a Native Spark SQL expression for Cosine Similarity.
-    Assumes vectors are already normalized (magnitude = 1).
-    Formula: dot_product(A, B)
-    """
-    return F.aggregate(
-        F.zip_with(col_a, col_b, lambda x, y: x * y), # Multiply elements
-        F.lit(0.0),                                   # Initial accumulator
-        lambda acc, x: acc + x                        # Sum them up
+    # Calculate Dot Product
+    dot_product = F.aggregate(
+        F.zip_with(col_a, col_b, lambda x, y: x * y),
+        F.lit(0.0),
+        lambda acc, x: acc + x
     )
+    # Calculate Magnitudes
+    mag_a = F.sqrt(F.aggregate(col_a, F.lit(0.0), lambda acc, x: acc + (x * x)))
+    mag_b = F.sqrt(F.aggregate(col_b, F.lit(0.0), lambda acc, x: acc + (x * x)))
+    
+    # Cosine Similarity = Dot Product / (||a|| * ||b||)
+    return F.when((mag_a > 0) & (mag_b > 0), dot_product / (mag_a * mag_b)).otherwise(F.lit(0.0))
 
 class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
     """
@@ -59,6 +61,8 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
                 F.col(f"b.providerHotelId").alias("providerHotelId_j"),
                 F.col(f"a.name").alias("name_i"),
                 F.col(f"b.name").alias("name_j"),
+                F.col(f"a.uid").alias("uid_i"),
+                F.col(f"b.uid").alias("uid_j"),
                 F.col(f"a.normalized_name").alias("normalized_name_i"),
                 F.col(f"b.normalized_name").alias("normalized_name_j"),
                 F.col(f"a.name_embedding").alias("name_embedding_i"),
@@ -79,6 +83,8 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
                 F.col(f"b.contact_address_country_name").alias("contact_address_country_name_j"),
                 F.col(f"a.address_embedding").alias("address_embedding_i"),
                 F.col(f"b.address_embedding").alias("address_embedding_j"),
+                F.col(f"a.combined_address").alias("combined_address_i"),
+                F.col(f"b.combined_address").alias("combined_address_j"),
                 F.col(f"a.contact_phones").alias("contact_phones_i"),
                 F.col(f"b.contact_phones").alias("contact_phones_j"),
                 F.col(f"a.contact_fax").alias("contact_fax_i"),
@@ -220,5 +226,4 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             , "address_embedding_i", "address_embedding_j", "contact_phones_i", "contact_phones_j", "contact_fax_i", "contact_fax_j"
             , "contact_emails_i", "contact_emails_j", "norm_phones_i", "norm_phones_j", "norm_faxes_i", "norm_faxes_j"]
         required_df = pairs_with_ratings_score.drop(*cols_to_remove)
-
         return required_df

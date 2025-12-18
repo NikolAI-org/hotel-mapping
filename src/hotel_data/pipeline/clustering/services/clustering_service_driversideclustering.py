@@ -52,54 +52,36 @@ class DriverSideUnionFindClustering(ClusteringStrategy):
             # 1. FILTER: Keep pairs above threshold
             matched_pairs = scored_pairs_df.filter(
                 F.col("is_matched") == True
-            ).select("name_i", "name_j")
+            ).select("uid_i", "uid_j") # Using the UIDs available in your schema
             
-            # Get all unique hotel names (vertices) to ensure singletons are clustered
-            all_hotel_names = hotels_df.select("name").rdd.flatMap(lambda x: x).collect()
+            # 2. COLLECT: Get all unique UIDs and Edges
+            # Get every unique hotel fingerprint from the main hotel list
+            all_uids = hotels_df.select("uid").rdd.flatMap(lambda x: x).distinct().collect()
             
-            # 2. COLLECT: Bring edges to driver memory
-            # For 13k edges, this is < 1 MB
-            # 🛠️ Secondary Fix (Safety): Collect as a list of tuples instead of Row objects 
-            edges_list = matched_pairs.select("name_i", "name_j").rdd.map(
-                lambda row: (row[0], row[1])
-            ).collect()
+            # Collect edges as (uid_i, uid_j) tuples
+            edges_list = matched_pairs.rdd.map(lambda row: (row[0], row[1])).collect()
             
-            self.logger.info(f"Collected edges to driver (safe: {len(edges_list)} edges)")
-            self.logger.info(f"Collected vertices to driver ({len(all_hotel_names)} hotels)")
+            self.logger.info(f"Collected {len(edges_list)} edges to driver")
+            self.logger.info(f"Collected {len(all_uids)} unique hotel UIDs")
             
-            # 3. COMPUTE: Fast Union-Find in pure Python
-            # 🛠️ Primary Fix (Completeness): Pass ALL hotel names to ensure all nodes are initialized
-            parent_map = self._union_find(edges_list, all_hotel_names)
-            self.logger.info(f"Computed {len(parent_map)} cluster assignments")
+            # 3. COMPUTE: Union-Find on the UIDs
+            parent_map = self._union_find(edges_list, all_uids)
             
-            # --- END OF FIXES FOR COMPLETENESS ---
+            # 4. BROADCAST & JOIN: Map cluster IDs back to the original hotels
+            # We rename 'name' to 'uid' because our parent_map now contains UIDs
+            cluster_df = self._create_cluster_dataframe(parent_map).withColumnRenamed("name", "uid")
             
-            # 4. BROADCAST: Convert back to Spark DataFrame
-            cluster_df = self._create_cluster_dataframe(parent_map)
-            
-            # 5. JOIN: Merge with hotels
-            result = (
-                hotels_df
-                .join(cluster_df, on="name", how="left")
+            result = hotels_df.join(cluster_df, on="uid", how="left") \
                 .withColumn(
                     "cluster_id",
                     F.coalesce(
                         F.col("cluster_id"),
-                        F.concat(F.lit("SINGLETON_"), F.col("name"))
+                        F.concat(F.lit("SINGLETON_"), F.col("uid"))
                     )
                 )
-            )
             
-            # Stats
-            total_clusters = result.select("cluster_id").distinct().count()
-            total_hotels = result.count()
-            
-            self.logger.info("=" * 70)
-            self.logger.info(f"✓ CLUSTERING COMPLETE")
-            self.logger.info(f"  Hotels: {total_hotels:,}")
-            self.logger.info(f"  Clusters: {total_clusters:,}")
-            self.logger.info(f"  Avg size: {total_hotels / total_clusters:.1f}")
-            self.logger.info("=" * 70)
+            # Log final stats
+            self.logger.info(f"Clustering Complete. Found {result.select('cluster_id').distinct().count()} clusters.")
             
             return result
         

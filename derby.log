@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
-Tue Dec 16 13:26:04 IST 2025:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019b-2628-c52f-000004c40260 
+Thu Dec 18 13:54:45 IST 2025:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019b-308f-bd26-000003c84db0 
 on database directory /home/akshay/spark_home/spark_derby_metastore/metastore_db with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@1dbd16a6 
 Loaded from file:/opt/spark/jars/derby-10.16.1.1.jar
 java.vendor=Ubuntu
@@ -8,6 +8,6 @@ java.runtime.version=17.0.17+10-Ubuntu-122.04
 user.dir=/home/akshay/workspace/python_workspace/hotel-mapping
 os.name=Linux
 os.arch=amd64
-os.version=6.8.0-88-generic
+os.version=6.8.0-90-generic
 derby.system.home=null
 Database Class Loader started - derby.database.classpath=''
