@@ -1,9 +1,18 @@
+import re
+
 def enhanced_name_scorer(s1: str, s2: str) -> float:
     """
     Calculates a hybrid similarity score (Jaccard + Containment Ratio)
     between two strings, providing robustness for names with common prefixes
     but differing suffixes. This function is symmetrical.
     """
+
+    # --- 0. Numeric Sanity Check (The Fix) ---
+    # Extract all sequences of digits from both strings
+    # e.g., "OYO Townhouse 123" -> {'123'}
+    nums1 = set(re.findall(r'\d+', s1))
+    nums2 = set(re.findall(r'\d+', s2))
+
     # Common stop words/terms often found in hotel names and addresses that should be ignored
     STOP_WORDS = {'Hotel', 'Inn', 'Lodge', 'Motel', 'Resort', 'Spa', 'Hostal', 'Guesthouse', 'Casa', 'Auberge',
                   'Apart-Hotel', 'Suites', 'Executive Suites', 'Residences', 'B&B', 'Bed and Breakfast', 'Hostel', 'At',
@@ -67,5 +76,13 @@ def enhanced_name_scorer(s1: str, s2: str) -> float:
         else:
             lcs_ratio = lcs_len / min_len
 
-    # --- 3. Combined Score ---
-    return (jaccard_score + lcs_ratio) / 2.0
+    # --- 3. Combined Score Calculation ---
+    combined_score = (jaccard_score + lcs_ratio) / 2.0
+
+    # --- 4. Apply Numeric Penalty ---
+    # Logic: If BOTH have numbers, and those numbers are DIFFERENT, apply penalty.
+    if nums1 and nums2 and nums1 != nums2:
+        combined_score -= 0.7  # Apply the requested penalty
+
+    # Ensure score doesn't drop below zero
+    return max(0.0, combined_score)

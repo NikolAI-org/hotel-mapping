@@ -154,22 +154,35 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
         ))
 
         address_score = address_score.withColumn(
-        "postal_code_match",
-        F.when(
-            # Check for match only if BOTH postal codes are NOT NULL
-            (F.col("contact_address_postalCode_i").isNotNull()) &
-            (F.col("contact_address_postalCode_i") == F.col("contact_address_postalCode_j")),
-            F.lit(1.0)
-        ).otherwise(F.lit(0.0))
-        .cast("float")
+            "postal_code_match",
+            F.when(
+                # Scenario 1: Missing Data -> Neutral Score
+                (F.col("contact_address_postalCode_i").isNull()) |
+                (F.col("contact_address_postalCode_j").isNull()),
+                F.lit(0.5)
+            ).when(
+                # Scenario 2: Both Present & Match -> Perfect Score
+                F.col("contact_address_postalCode_i") == F.col("contact_address_postalCode_j"),
+                F.lit(1.0)
+            ).otherwise(
+                # Scenario 3: Both Present & Different -> Mismatch Penalty
+                F.lit(0.0)
+            ).cast("float")
         ).withColumn(
             "country_match",
             F.when(
-                (F.col("contact_address_country_name_i").isNotNull()) &
-                (F.col("contact_address_country_name_i") == F.col("contact_address_country_name_j")),
+                # Scenario 1: Missing Data -> Neutral Score
+                (F.col("contact_address_country_name_i").isNull()) |
+                (F.col("contact_address_country_name_j").isNull()),
+                F.lit(0.5)
+            ).when(
+                # Scenario 2: Both Present & Match -> Perfect Score
+                F.col("contact_address_country_name_i") == F.col("contact_address_country_name_j"),
                 F.lit(1.0)
-            ).otherwise(F.lit(0.0))
-            .cast("float")
+            ).otherwise(
+                # Scenario 3: Both Present & Different -> Mismatch Penalty
+                F.lit(0.0)
+            ).cast("float")
         ).withColumn(
             "address_sbert_score",
             get_cosine_similarity_expr(
@@ -178,27 +191,45 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             ).cast("float") # Ensure cast to match schema
         )
 
+        # Helper to check for "Missing Data" (Null OR Empty Array)
+        def is_empty_or_null(col_name):
+            return (F.col(col_name).isNull()) | (F.size(F.col(col_name)) == 0)
+
         phone_normalized = address_score.withColumn("norm_phones_i", normalize_phone_expr(F.col("contact_phones_i"))) \
             .withColumn("norm_phones_j", normalize_phone_expr(F.col("contact_phones_j"))) \
             .withColumn("norm_faxes_i", normalize_phone_expr(F.col("contact_fax_i"), 10)) \
             .withColumn("norm_faxes_j", normalize_phone_expr(F.col("contact_fax_j"), 10))
 
-        # B. Calculate Binary Scores
+        # B. Calculate Scores with Neutral Fallback (0.5)
         df_scores = phone_normalized.withColumn(
             "phone_match_score",
             F.when(
+                # Scenario 1: Data Missing on Either Side -> Neutral
+                is_empty_or_null("norm_phones_i") | is_empty_or_null("norm_phones_j"),
+                F.lit(0.5)
+            ).when(
+                # Scenario 2: Data Present & Overlaps -> Match
                 arrays_overlap_check("norm_phones_i", "norm_phones_j"),
                 F.lit(1.0)
-            ).otherwise(F.lit(0.0)).cast("float")  # Ensure FloatType for Delta schema
+            ).otherwise(
+                # Scenario 3: Data Present & No Overlap -> Mismatch
+                F.lit(0.0)
+            ).cast("float")
         ).withColumn(
             "email_match_score",
             F.when(
+                is_empty_or_null("contact_emails_i") | is_empty_or_null("contact_emails_j"),
+                F.lit(0.5)
+            ).when(
                 arrays_overlap_check("contact_emails_i", "contact_emails_j"),
                 F.lit(1.0)
             ).otherwise(F.lit(0.0)).cast("float")
         ).withColumn(
             "fax_match_score",
             F.when(
+                is_empty_or_null("contact_fax_i") | is_empty_or_null("contact_fax_j"),
+                F.lit(0.5)
+            ).when(
                 arrays_overlap_check("contact_fax_i", "contact_fax_j"),
                 F.lit(1.0)
             ).otherwise(F.lit(0.0)).cast("float")

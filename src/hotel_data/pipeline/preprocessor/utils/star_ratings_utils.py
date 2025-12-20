@@ -6,9 +6,9 @@ def star_rating_score(r1, r2):
     STAR_SCORE[i] = score when |r1 - r2| == i
     """
 
-    # Return 0 if missing value
+    # Return 0.5 if missing value
     if r1 is None or r2 is None:
-        return 0.0
+        return 0.5
 
     # Force them to integers if providers supply "4.0" etc.
     try:
