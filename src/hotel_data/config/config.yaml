@@ -7,38 +7,57 @@ storage:
   minio_bucket: "hotel-data"
   delta_path: "s3a://hotel-data/delta"
 
-scoring:  
-  thresholds:
-    geo_distance_km: 0.5
-    name_score_jaccard_lcs: 0.18
-    normalized_name_score_jaccard_lcs: 0.18
-    name_score_sbert: 0.8
-    normalized_name_score_sbert: 0.8
-    star_ratings_score: 0.7
-    address_line1_score: 0.2
-    postal_code_match: 0.6
-    country_match: 0.90
-    address_sbert_score: 0.7
-    phone_match_score: 0.0
-    email_match_score: 0.0
-    fax_match_score: 0.0
-
+scoring: 
   # Values can be lte, gte, gt, lt
-  comparators:
-      geo_distance_km: lte
-      name_score_jaccard_lcs: gte
-      normalized_name_score_jaccard_lcs: gte
-      name_score_sbert: gte
-      normalized_name_score_sbert: gte
-      star_ratings_score: gte
-      address_line1_score: gte
-      postal_code_match: gte
-      country_match: gte
-      address_sbert_score: gte
-      phone_match_score: gte
-      email_match_score: gte
-      fax_match_score: gte
-
+  condition_groups:
+    - operator: AND
+      conditions:
+        geo_distance_km:
+          threshold: 0.8
+          comparator: gte
+    - operator: OR
+      conditions:
+        name_score_jaccard_lcs: 
+          threshold: 0.18
+          comparator: gte
+        normalized_name_score_jaccard_lcs:
+          threshold: 0.18
+          comparator: gte
+        name_score_sbert:
+          threshold: 0.8
+          comparator: gte
+        normalized_name_score_sbert:
+          threshold: 0.8
+          comparator: gte
+    - operator: OR
+      conditions:
+        address_line1_score: 
+          threshold: 0.50
+          comparator: gte
+        address_sbert_score:
+          threshold: 0.7
+          comparator: gte
+    - operator: OR
+      conditions:
+        star_ratings_score: 
+          threshold: 0.50
+          comparator: gte
+        postal_code_match:
+          threshold: 0.9
+          comparator: gte
+        country_match:
+          threshold: 0.9
+          comparator: gte
+        phone_match_score:
+          threshold: 0.6
+          comparator: gte
+        email_match_score:
+          threshold: 0.6
+          comparator: gte
+        fax_match_score:
+          threshold: 0.6
+          comparator: gte
+  group_operator: AND
 
 clustering:
   algorithm: unionfind

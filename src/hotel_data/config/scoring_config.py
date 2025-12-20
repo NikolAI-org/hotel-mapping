@@ -1,30 +1,177 @@
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional
 
+class ComparisonOperator(str, Enum):
+    """Valid comparison operators"""
+    GTE = "gte"  # Greater than or equal
+    LTE = "lte"  # Less than or equal
+    GT = "gt"    # Greater than
+    LT = "lt"    # Less than
+
+
+class LogicalOperator(str, Enum):
+    """Valid logical operators"""
+    AND = "AND"
+    OR = "OR"
+
+@dataclass
+class ConditionConfig:
+    """Represents a single condition within a condition group"""
+    
+    threshold: float
+    comparator: ComparisonOperator = ComparisonOperator.GTE
+    
+    def validate(self) -> bool:
+        """Validate individual condition"""
+        if not (-1.0 <= self.threshold <= 1.0):
+            raise ValueError(
+                f"Condition threshold outside [-1, 1]: {self.threshold}"
+            )
+        
+        if self.comparator not in ComparisonOperator:
+            raise ValueError(
+                f"Invalid comparator: {self.comparator}. "
+                f"Must be one of: {[op.value for op in ComparisonOperator]}"
+            )
+        
+        return True
+
+@dataclass
+class ConditionGroupConfig:
+    """Represents a group of conditions combined with AND/OR operator"""
+    
+    operator: LogicalOperator = LogicalOperator.AND
+    conditions: Dict[str, ConditionConfig] = field(default_factory=dict)
+    
+    def validate(self) -> bool:
+        """Validate condition group"""
+        if self.operator not in LogicalOperator:
+            raise ValueError(
+                f"Invalid group operator: {self.operator}. "
+                f"Must be one of: {[op.value for op in LogicalOperator]}"
+            )
+        
+        if not self.conditions:
+            raise ValueError("Condition group must have at least one condition")
+        
+        # Validate each condition in the group
+        for signal_name, condition_config in self.conditions.items():
+            if not condition_config.validate():
+                raise ValueError(
+                    f"Invalid condition for signal '{signal_name}'"
+                )
+        
+        return True
+
+     
 @dataclass
 class ScoringConfig:
     """Configuration for scoring strategy"""
     
-    thresholds: Dict[str, float]
+    # thresholds: Dict[str, float]
+        
+    # comparators: Dict[str, ComparisonOperator]
     
-    comparators: Dict[str, float]
+    condition_groups: Optional[List[ConditionGroupConfig]] = None
+    
+    group_operator: LogicalOperator = LogicalOperator.AND
     
     def validate(self) -> bool:
-        """
-        Validate scoring config with detailed error reporting
-        """
+        """Validate scoring config with condition_groups only"""
         
-        # ════════════════════════════════════════════════════════════════
-        # CHECK 4: All thresholds in valid range
-        # ════════════════════════════════════════════════════════════════
+        if not self.condition_groups:
+            raise ValueError("condition_groups cannot be empty")
         
-        for threshold_name, threshold_value in self.thresholds.items():
-            if not (-1.0 <= threshold_value <= 1.0):
+        deserialized_groups = []
+        
+        for i, group_data in enumerate(self.condition_groups):
+            if isinstance(group_data, dict):
+                try:
+                    operator_str = group_data.get("operator", "AND")
+                    operator = (
+                        LogicalOperator[operator_str.upper()]
+                        if isinstance(operator_str, str)
+                        else operator_str
+                    )
+                    
+                    conditions_dict = group_data.get("conditions", {})
+                    conditions = {}
+                    
+                    for signal_name, cond_data in conditions_dict.items():
+                        if isinstance(cond_data, dict):
+                            threshold = cond_data.get("threshold")
+                            if threshold is None:
+                                raise ValueError(
+                                    f"Condition for '{signal_name}' missing threshold"
+                                )
+                            
+                            comparator_str = cond_data.get("comparator", "gte")
+                            try:
+                                comparator = (
+                                    ComparisonOperator(comparator_str.lower())
+                                    if isinstance(comparator_str, str)
+                                    else comparator_str
+                                )
+                            except ValueError:
+                                raise ValueError(
+                                    f"Invalid comparator '{comparator_str}' for '{signal_name}'. "
+                                    f"Must be one of: {[op.value for op in ComparisonOperator]}"
+                                )
+                            
+                            conditions[signal_name] = ConditionConfig(
+                                threshold=threshold,
+                                comparator=comparator
+                            )
+                        else:
+                            conditions[signal_name] = cond_data
+                    
+                    if not conditions:
+                        raise ValueError(f"Group {i} has no conditions")
+                    
+                    group_config = ConditionGroupConfig(
+                        operator=operator,
+                        conditions=conditions
+                    )
+                    deserialized_groups.append(group_config)
+                
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to deserialize condition_groups[{i}]: {str(e)}"
+                    )
+            
+            elif isinstance(group_data, ConditionGroupConfig):
+                deserialized_groups.append(group_data)
+            else:
                 raise ValueError(
-                    f"Threshold '{threshold_name}' outside [-1, 1]: {threshold_value}"
+                    f"condition_groups[{i}] must be dict or ConditionGroupConfig, "
+                    f"got {type(group_data)}"
+                )
+        
+        self.condition_groups = deserialized_groups
+        
+        # Convert group_operator if string
+        if isinstance(self.group_operator, str):
+            try:
+                self.group_operator = LogicalOperator[self.group_operator.upper()]
+            except KeyError:
+                raise ValueError(
+                    f"Invalid group_operator: {self.group_operator}. "
+                    f"Must be one of: {[op.value for op in LogicalOperator]}"
+                )
+        
+        # Validate all condition groups
+        for i, group in enumerate(self.condition_groups):
+            try:
+                if not group.validate():
+                    raise ValueError(f"Condition group {i} is invalid")
+            except ValueError as e:
+                raise ValueError(
+                    f"Condition group {i} validation failed: {str(e)}"
                 )
         
         return True
+
 
 @dataclass
 class StorageConfig:
