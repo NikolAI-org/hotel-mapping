@@ -6,7 +6,7 @@ from sympy.physics.quantum.gate import normalized
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_score
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
-from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer
+from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer, JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO
 from hotel_data.pipeline.preprocessor.utils.phone_number_utils import normalize_phone_expr, arrays_overlap_check
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
@@ -115,23 +115,51 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
         pairs_filtered = pairs_with_distance.filter(F.col("geo_distance_km") <= 0.5)
 
         name_udf = F.udf(enhanced_name_scorer, "float")
-        jaccard_lcs = pairs_filtered.withColumn(
-            "name_score_jaccard_lcs",
+        jaccard_lcs_levenshtein = pairs_filtered.withColumn(
+            "name_score_jaccard",
             name_udf(
                 F.col("name_i"),
-                F.col("name_j")
+                F.col("name_j"),
+                F.lit(JACCARD_ALGO)
             )
-        )
-
-        normalized_jaccard_lcs = jaccard_lcs.withColumn(
-            "normalized_name_score_jaccard_lcs",
+        ).withColumn(
+            "normalized_name_score_jaccard",
             name_udf(
                 F.col("normalized_name_i"),
-                F.col("normalized_name_j")
+                F.col("normalized_name_j"),
+                F.lit(JACCARD_ALGO)
+            )
+        ).withColumn(
+            "name_score_lcs",
+            name_udf(
+                F.col("name_i"),
+                F.col("name_j"),
+                F.lit(LCS_ALGO)
+            )
+        ).withColumn(
+            "normalized_name_score_lcs",
+            name_udf(
+                F.col("normalized_name_i"),
+                F.col("normalized_name_j"),
+                F.lit(LCS_ALGO)
+            )
+        ).withColumn(
+            "name_score_levenshtein",
+            name_udf(
+                F.col("name_i"),
+                F.col("name_j"),
+                F.lit(LEVENSHTEIN_ALGO)
+            )
+        ).withColumn(
+            "normalized_name_score_levenshtein",
+            name_udf(
+                F.col("normalized_name_i"),
+                F.col("normalized_name_j"),
+                F.lit(LEVENSHTEIN_ALGO)
             )
         )
 
-        sbert = normalized_jaccard_lcs.withColumn(
+        sbert = jaccard_lcs_levenshtein.withColumn(
             "name_score_sbert",
             get_cosine_similarity_expr(F.col("name_embedding_i"), F.col("name_embedding_j")).cast("float")
         )

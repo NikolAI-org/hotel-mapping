@@ -113,8 +113,12 @@ class ThresholdScoringStrategy(ScoringStrategy):
     
     SIGNAL_COLUMNS = [
         "geo_distance_km",
-        "name_score_jaccard_lcs",
-        "normalized_name_score_jaccard_lcs",
+        "name_score_jaccard",
+        "normalized_name_score_jaccard",
+        "name_score_lcs",
+        "normalized_name_score_lcs",
+        "name_score_levenshtein",
+        "normalized_name_score_levenshtein",
         "name_score_sbert",
         "normalized_name_score_sbert",
         "star_ratings_score",

@@ -18,8 +18,12 @@ class ThresholdScoringStrategy(ScoringStrategy):
     
     SIGNAL_COLUMNS = [ 
                       "geo_distance_km", 
-                      "name_score_jaccard_lcs", 
-                      "normalized_name_score_jaccard_lcs",
+                      "name_score_jaccard",
+                      "normalized_name_score_jaccard",
+                      "name_score_lcs",
+                      "normalized_name_score_lcs",
+                      "name_score_levenshtein",
+                      "normalized_name_score_levenshtein",
                       "name_score_sbert",
                       "normalized_name_score_sbert",
                       "star_ratings_score", 
@@ -43,8 +47,12 @@ class ThresholdScoringStrategy(ScoringStrategy):
         self.logger.log("INFO", "ThresholdScoringStrategy initialized")
         
         self.signal_thresholds = {
-            "name_score_jaccard_lcs": self.config.thresholds.get('name_score_jaccard_lcs', 0.15),
-            "normalized_name_score_jaccard_lcs": self.config.thresholds.get('normalized_name_score_jaccard_lcs', 0.15),
+            "name_score_jaccard": self.config.thresholds.get('name_score_jaccard', 0.15),
+            "normalized_name_score_jaccard": self.config.thresholds.get('normalized_name_score_jaccard', 0.15),
+            "name_score_lcs": self.config.thresholds.get('name_score_lcs', 0.15),
+            "normalized_name_score_lcs": self.config.thresholds.get('normalized_name_score_lcs', 0.15),
+            "name_score_levenshtein": self.config.thresholds.get('name_score_levenshtein', 0.15),
+            "normalized_name_score_levenshtein": self.config.thresholds.get('normalized_name_score_levenshtein', 0.15),
             "name_score_sbert": self.config.thresholds.get('name_score_sbert', 0.0),
             "normalized_name_score_sbert": self.config.thresholds.get('normalized_name_score_sbert', 0.0),
             "star_ratings_score": self.config.thresholds.get('star_ratings_score', 0.7),
@@ -62,7 +70,9 @@ class ThresholdScoringStrategy(ScoringStrategy):
         self.signal_comparators = {
             "geo_distance_km": self.config.comparators.get("geo_distance_km", "lte"),
             "name_score_jaccard_lcs": self.config.comparators.get("name_score_jaccard_lcs", "gte"),
-            "normalized_name_score_jaccard_lcs": self.config.comparators.get("normalized_name_score_jaccard_lcs", "gte"),
+            "normalized_name_score_jaccard": self.config.comparators.get("normalized_name_score_jaccard", "gte"),
+            "normalized_name_score_lcs": self.config.comparators.get("normalized_name_score_lcs", "gte"),
+            "normalized_name_score_levenshtein": self.config.comparators.get("normalized_name_score_levenshtein", "gte"),
             "name_score_sbert": self.config.comparators.get("name_score_sbert", "gte"),
             "normalized_name_score_sbert": self.config.comparators.get("normalized_name_score_sbert", "gte"),
             "star_ratings_score": self.config.comparators.get("star_ratings_score", "gte"),

@@ -13,49 +13,70 @@ scoring:
     - operator: AND
       conditions:
         geo_distance_km:
-          threshold: 0.8
-          comparator: gte
+          threshold: 0.5
+          comparator: lte
     - operator: OR
       conditions:
-        name_score_jaccard_lcs: 
-          threshold: 0.18
+        name_score_jaccard:
+          threshold: 0.5
           comparator: gte
-        normalized_name_score_jaccard_lcs:
-          threshold: 0.18
+        normalized_name_score_jaccard:
+          threshold: 0.7
+          comparator: gte
+        name_score_lcs:
+          threshold: 0.5
+          comparator: gte
+        normalized_name_score_lcs:
+          threshold: 0.7
+          comparator: gte
+        name_score_levenshtein:
+          threshold: 0.5
+          comparator: gte
+        normalized_name_score_levenshtein:
+          threshold: 0.7
           comparator: gte
         name_score_sbert:
-          threshold: 0.8
+          threshold: 0.6
           comparator: gte
         normalized_name_score_sbert:
           threshold: 0.8
           comparator: gte
     - operator: OR
       conditions:
-        address_line1_score: 
-          threshold: 0.50
+        address_line1_score:
+          threshold: 0.2
           comparator: gte
         address_sbert_score:
-          threshold: 0.7
+          threshold: 0.5
+          comparator: gte
+    - operator: AND
+      conditions:
+        star_ratings_score:
+          threshold: 0.2
           comparator: gte
     - operator: OR
       conditions:
-        star_ratings_score: 
-          threshold: 0.50
-          comparator: gte
         postal_code_match:
-          threshold: 0.9
+          threshold: 0.5
           comparator: gte
+        geo_distance_km:
+          threshold: 0.1
+          comparator: lte
+    - operator: AND
+      conditions:
         country_match:
-          threshold: 0.9
+          threshold: 0.5
           comparator: gte
+    - operator: OR
+      conditions:
         phone_match_score:
-          threshold: 0.6
+          threshold: 0.5
           comparator: gte
         email_match_score:
-          threshold: 0.6
+          threshold: 0.5
           comparator: gte
         fax_match_score:
-          threshold: 0.6
+          threshold: 0.5
           comparator: gte
   group_operator: AND
 
