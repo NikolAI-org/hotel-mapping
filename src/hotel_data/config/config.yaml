@@ -15,32 +15,40 @@ scoring:
         geo_distance_km:
           threshold: 0.5
           comparator: lte
-    - operator: OR
-      conditions:
-        name_score_jaccard:
-          threshold: 0.5
-          comparator: gte
-        normalized_name_score_jaccard:
-          threshold: 0.7
-          comparator: gte
-        name_score_lcs:
-          threshold: 0.5
-          comparator: gte
-        normalized_name_score_lcs:
-          threshold: 0.7
-          comparator: gte
-        name_score_levenshtein:
-          threshold: 0.5
-          comparator: gte
-        normalized_name_score_levenshtein:
-          threshold: 0.7
-          comparator: gte
-        name_score_sbert:
-          threshold: 0.6
-          comparator: gte
-        normalized_name_score_sbert:
-          threshold: 0.8
-          comparator: gte
+    - operator: AND
+      condition_groups:
+        - operator: OR
+          conditions:
+            name_score_jaccard:
+              threshold: 0.5
+              comparator: gte
+            normalized_name_score_jaccard:
+              threshold: 0.7
+              comparator: gte
+        - operator: OR
+          conditions:
+            name_score_lcs:
+              threshold: 0.5
+              comparator: gte
+            normalized_name_score_lcs:
+              threshold: 0.7
+              comparator: gte
+        - operator: OR
+          conditions:
+            name_score_levenshtein:
+              threshold: 0.5
+              comparator: gte
+            normalized_name_score_levenshtein:
+              threshold: 0.7
+              comparator: gte
+        - operator: OR
+          conditions:              
+            name_score_sbert:
+              threshold: 0.6
+              comparator: gte
+            normalized_name_score_sbert:
+              threshold: 0.8
+              comparator: gte
     - operator: OR
       conditions:
         address_line1_score:

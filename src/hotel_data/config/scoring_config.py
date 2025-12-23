@@ -2,18 +2,20 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
+
 class ComparisonOperator(str, Enum):
     """Valid comparison operators"""
-    GTE = "gte"  # Greater than or equal
-    LTE = "lte"  # Less than or equal
-    GT = "gt"    # Greater than
-    LT = "lt"    # Less than
+    GTE = "gte"
+    LTE = "lte"
+    GT = "gt"
+    LT = "lt"
 
 
 class LogicalOperator(str, Enum):
     """Valid logical operators"""
     AND = "AND"
     OR = "OR"
+
 
 @dataclass
 class ConditionConfig:
@@ -37,48 +39,70 @@ class ConditionConfig:
         
         return True
 
+
 @dataclass
 class ConditionGroupConfig:
-    """Represents a group of conditions combined with AND/OR operator"""
+    """
+    Represents a group of conditions combined with AND/OR operator.
+    NOW SUPPORTS NESTING: can contain either conditions OR nested condition_groups.
+    
+    Backward compatible: old configs with only 'conditions' still work!
+    """
     
     operator: LogicalOperator = LogicalOperator.AND
-    conditions: Dict[str, ConditionConfig] = field(default_factory=dict)
+    conditions: Optional[Dict[str, ConditionConfig]] = field(default_factory=dict)
+    condition_groups: Optional[List['ConditionGroupConfig']] = field(default_factory=list)
     
     def validate(self) -> bool:
-        """Validate condition group"""
+        """Validate condition group - can have conditions OR nested groups, not both"""
         if self.operator not in LogicalOperator:
             raise ValueError(
                 f"Invalid group operator: {self.operator}. "
                 f"Must be one of: {[op.value for op in LogicalOperator]}"
             )
         
-        if not self.conditions:
-            raise ValueError("Condition group must have at least one condition")
+        has_conditions = self.conditions and len(self.conditions) > 0
+        has_nested_groups = self.condition_groups and len(self.condition_groups) > 0
         
-        # Validate each condition in the group
-        for signal_name, condition_config in self.conditions.items():
-            if not condition_config.validate():
-                raise ValueError(
-                    f"Invalid condition for signal '{signal_name}'"
-                )
+        # Must have either conditions OR nested groups (not both, not neither)
+        if has_conditions and has_nested_groups:
+            raise ValueError(
+                "ConditionGroup cannot have BOTH 'conditions' and 'condition_groups'"
+            )
+        
+        if not (has_conditions or has_nested_groups):
+            raise ValueError(
+                "ConditionGroup must have either 'conditions' or 'condition_groups'"
+            )
+        
+        # Validate conditions if present
+        if has_conditions and self.conditions is not None:
+            for signal_name, condition_config in self.conditions.items():
+                if not condition_config.validate():
+                    raise ValueError(
+                        f"Invalid condition for signal '{signal_name}'"
+                    )
+        
+        # Recursively validate nested groups if present
+        if has_nested_groups and self.condition_groups is not None:
+            for i, nested_group in enumerate(self.condition_groups):
+                if not nested_group.validate():
+                    raise ValueError(
+                        f"Nested condition group {i} is invalid"
+                    )
         
         return True
 
-     
+
 @dataclass
 class ScoringConfig:
-    """Configuration for scoring strategy"""
+    """Configuration for scoring strategy - now supports nested conditions"""
     
-    # thresholds: Dict[str, float]
-        
-    # comparators: Dict[str, ComparisonOperator]
-    
-    condition_groups: Optional[List[ConditionGroupConfig]] = None
-    
-    group_operator: LogicalOperator = LogicalOperator.AND
+    condition_groups: Optional[List[ConditionGroupConfig]] = field(default_factory=list)
+    group_operator: LogicalOperator = LogicalOperator.AND  # How to combine top-level groups
     
     def validate(self) -> bool:
-        """Validate scoring config with condition_groups only"""
+        """Validate scoring config with condition_groups (flat or nested)"""
         
         if not self.condition_groups:
             raise ValueError("condition_groups cannot be empty")
@@ -88,52 +112,8 @@ class ScoringConfig:
         for i, group_data in enumerate(self.condition_groups):
             if isinstance(group_data, dict):
                 try:
-                    operator_str = group_data.get("operator", "AND")
-                    operator = (
-                        LogicalOperator[operator_str.upper()]
-                        if isinstance(operator_str, str)
-                        else operator_str
-                    )
-                    
-                    conditions_dict = group_data.get("conditions", {})
-                    conditions = {}
-                    
-                    for signal_name, cond_data in conditions_dict.items():
-                        if isinstance(cond_data, dict):
-                            threshold = cond_data.get("threshold")
-                            if threshold is None:
-                                raise ValueError(
-                                    f"Condition for '{signal_name}' missing threshold"
-                                )
-                            
-                            comparator_str = cond_data.get("comparator", "gte")
-                            try:
-                                comparator = (
-                                    ComparisonOperator(comparator_str.lower())
-                                    if isinstance(comparator_str, str)
-                                    else comparator_str
-                                )
-                            except ValueError:
-                                raise ValueError(
-                                    f"Invalid comparator '{comparator_str}' for '{signal_name}'. "
-                                    f"Must be one of: {[op.value for op in ComparisonOperator]}"
-                                )
-                            
-                            conditions[signal_name] = ConditionConfig(
-                                threshold=threshold,
-                                comparator=comparator
-                            )
-                        else:
-                            conditions[signal_name] = cond_data
-                    
-                    if not conditions:
-                        raise ValueError(f"Group {i} has no conditions")
-                    
-                    group_config = ConditionGroupConfig(
-                        operator=operator,
-                        conditions=conditions
-                    )
-                    deserialized_groups.append(group_config)
+                    deserialized_group = self._deserialize_condition_group(group_data)
+                    deserialized_groups.append(deserialized_group)
                 
                 except Exception as e:
                     raise ValueError(
@@ -141,7 +121,10 @@ class ScoringConfig:
                     )
             
             elif isinstance(group_data, ConditionGroupConfig):
+                if not group_data.validate():
+                    raise ValueError(f"Condition group {i} is invalid")
                 deserialized_groups.append(group_data)
+            
             else:
                 raise ValueError(
                     f"condition_groups[{i}] must be dict or ConditionGroupConfig, "
@@ -160,17 +143,85 @@ class ScoringConfig:
                     f"Must be one of: {[op.value for op in LogicalOperator]}"
                 )
         
-        # Validate all condition groups
-        for i, group in enumerate(self.condition_groups):
-            try:
-                if not group.validate():
-                    raise ValueError(f"Condition group {i} is invalid")
-            except ValueError as e:
-                raise ValueError(
-                    f"Condition group {i} validation failed: {str(e)}"
-                )
-        
         return True
+    
+    @staticmethod
+    def _deserialize_condition_group(group_data: dict) -> ConditionGroupConfig:
+        """
+        Recursively deserialize a condition group from dict.
+        Supports both flat (conditions only) and nested (condition_groups) structures.
+        """
+        operator_str = group_data.get("operator", "AND")
+        operator = (
+            LogicalOperator[operator_str.upper()]
+            if isinstance(operator_str, str)
+            else operator_str
+        )
+        
+        conditions = None
+        nested_groups = None
+        
+        # Parse conditions if present
+        if "conditions" in group_data and group_data["conditions"]:
+            conditions = {}
+            conditions_dict = group_data.get("conditions", {})
+            
+            for signal_name, cond_data in conditions_dict.items():
+                if isinstance(cond_data, dict):
+                    threshold = cond_data.get("threshold")
+                    if threshold is None:
+                        raise ValueError(
+                            f"Condition for '{signal_name}' missing threshold"
+                        )
+                    
+                    comparator_str = cond_data.get("comparator", "gte")
+                    try:
+                        comparator = (
+                            ComparisonOperator(comparator_str.lower())
+                            if isinstance(comparator_str, str)
+                            else comparator_str
+                        )
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid comparator '{comparator_str}' for '{signal_name}'. "
+                            f"Must be one of: {[op.value for op in ComparisonOperator]}"
+                        )
+                    
+                    conditions[signal_name] = ConditionConfig(
+                        threshold=threshold,
+                        comparator=comparator
+                    )
+                else:
+                    conditions[signal_name] = cond_data
+        
+        # Parse nested condition_groups if present (NEW FEATURE)
+        if "condition_groups" in group_data and group_data["condition_groups"]:
+            nested_groups = []
+            for nested_group_data in group_data["condition_groups"]:
+                if isinstance(nested_group_data, dict):
+                    # Recursively parse nested group
+                    nested_groups.append(
+                        ScoringConfig._deserialize_condition_group(nested_group_data)
+                    )
+                elif isinstance(nested_group_data, ConditionGroupConfig):
+                    nested_groups.append(nested_group_data)
+                else:
+                    raise ValueError(
+                        f"condition_groups item must be dict or ConditionGroupConfig, "
+                        f"got {type(nested_group_data)}"
+                    )
+        
+        group_config = ConditionGroupConfig(
+            operator=operator,
+            conditions=conditions or {},
+            condition_groups=nested_groups or []
+        )
+        
+        if not group_config.validate():
+            raise ValueError("Deserialized condition group failed validation")
+        
+        return group_config
+
 
 
 @dataclass

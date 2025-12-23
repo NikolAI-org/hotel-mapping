@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 
-from hotel_data.config.scoring_config import HotelClusteringConfig
+from hotel_data.config.scoring_config import ConditionConfig, ConditionGroupConfig, HotelClusteringConfig, ScoringConfig
 
 class ConfigLoader:
     """
@@ -38,6 +38,7 @@ class ConfigLoader:
         # Load YAML
         with open(config_file, 'r') as f:
             config_dict = yaml.safe_load(f)
+            
         
         # Create config object
         config = HotelClusteringConfig.from_dict(config_dict)
@@ -53,3 +54,4 @@ class ConfigLoader:
         config = HotelClusteringConfig.from_dict(config_dict)
         config.validate()
         return config
+

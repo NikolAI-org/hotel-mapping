@@ -2,7 +2,7 @@
 
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.functions import col, lit, current_timestamp, when, struct
-from hotel_data.config.scoring_config import ScoringConfig
+from hotel_data.config.scoring_config import ConditionGroupConfig, ScoringConfig
 from hotel_data.pipeline.clustering.core.exceptions import ScoringException
 from hotel_data.pipeline.clustering.core.clustering_interfaces import Logger, ScoringStrategy
 from functools import reduce
@@ -149,14 +149,15 @@ class ThresholdScoringStrategy(ScoringStrategy):
         
         if config.condition_groups:
             for group in config.condition_groups:
-                for signal_name, cond_config in group.conditions.items():
-                    if signal_name not in self.signal_thresholds:
-                        self.signal_thresholds[signal_name] = cond_config.threshold
-                        self.signal_comparators[signal_name] = (
-                            cond_config.comparator.value
-                            if hasattr(cond_config.comparator, "value")
-                            else cond_config.comparator
-                        )
+                if group.conditions is not None:
+                    for signal_name, cond_config in group.conditions.items():
+                        if signal_name not in self.signal_thresholds:
+                            self.signal_thresholds[signal_name] = cond_config.threshold
+                            self.signal_comparators[signal_name] = (
+                                cond_config.comparator.value
+                                if hasattr(cond_config.comparator, "value")
+                                else cond_config.comparator
+                            )
         
         self.group_operator = (
             config.group_operator.value
@@ -194,16 +195,17 @@ class ThresholdScoringStrategy(ScoringStrategy):
                 )
                 
                 conditions = {}
-                for signal_name, cond_config in group_config.conditions.items():
-                    comparator = (
-                        cond_config.comparator.value
-                        if hasattr(cond_config.comparator, "value")
-                        else cond_config.comparator
-                    )
-                    conditions[signal_name] = {
-                        "threshold": cond_config.threshold,
-                        "comparator": comparator,
-                    }
+                if group_config.conditions is not None:
+                    for signal_name, cond_config in group_config.conditions.items():
+                        comparator = (
+                            cond_config.comparator.value
+                            if hasattr(cond_config.comparator, "value")
+                            else cond_config.comparator
+                        )
+                        conditions[signal_name] = {
+                            "threshold": cond_config.threshold,
+                            "comparator": comparator,
+                        }
                 
                 groups.append(ConditionGroup(operator, conditions, self.logger))
         
@@ -287,37 +289,60 @@ class ThresholdScoringStrategy(ScoringStrategy):
     
     def _add_match_classification(self, df: DataFrame) -> DataFrame:
         """
-        Applies condition group logic to classify matches.
+        Apply condition logic to classify matches.
+        Works with BOTH old ConditionGroup and new ConditionGroupConfig.
         """
+        
+        # Get operator value safely
+        group_op_str = getattr(self.group_operator, "value", self.group_operator)
+        
         self.logger.log(
             "INFO",
             f"Applying {len(self.condition_groups)} condition groups "
-            f"combined with {self.group_operator}"
+            f"combined with {group_op_str}"
         )
         
         if not self.condition_groups:
             all_passed_expr = lit(True)
         elif len(self.condition_groups) == 1:
-            group = self.condition_groups[0]
-            all_passed_expr = group.build_expression(
-                self.signal_thresholds,
-                self.signal_comparators
-            )
-        else:
-            group_expressions = [
-                group.build_expression(
-                    self.signal_thresholds,
-                    self.signal_comparators
-                )
-                for group in self.condition_groups
-            ]
+            # Single group - check type and process accordingly
+            group = self.condition_groups
             
-            if self.group_operator == "OR":
+            # Check if it's new ConditionGroupConfig with nesting
+            if (isinstance(group, ConditionGroupConfig) and 
+                hasattr(group, 'condition_groups') and 
+                group.condition_groups):
+                # New nested structure
+                all_passed_expr = self._build_group_expression(group)
+            else:
+                # Old ConditionGroup or flat ConditionGroupConfig
+                all_passed_expr = self._build_old_style_expression(group)
+        else:
+            # Multiple groups
+            group_expressions = []
+            
+            for group in self.condition_groups:
+                # Check if it's new ConditionGroupConfig with nesting
+                if (isinstance(group, ConditionGroupConfig) and 
+                    hasattr(group, 'condition_groups') and 
+                    group.condition_groups):
+                    # New nested structure
+                    group_expr = self._build_group_expression(group)
+                else:
+                    # Old ConditionGroup or flat ConditionGroupConfig
+                    group_expr = self._build_old_style_expression(group)
+                
+                group_expressions.append(group_expr)
+            
+            # Combine groups
+            op_value = getattr(self.group_operator, "value", self.group_operator)
+            
+            if op_value == "OR":
                 all_passed_expr = reduce(lambda a, b: a | b, group_expressions)
-            else:  # AND (default)
+            else:
                 all_passed_expr = reduce(lambda a, b: a & b, group_expressions)
         
-        # Classify as MATCHED or UNMATCHED
+        # Classify and score
         df = (df
             .withColumn("is_matched", all_passed_expr)
             .withColumn(
@@ -334,13 +359,94 @@ class ThresholdScoringStrategy(ScoringStrategy):
             f"Classification complete: {match_count} matched, {unmatch_count} unmatched."
         )
         
-        # Add match score (1.0 for match, 0.0 for non-match)
         df = df.withColumn(
             "match_score",
             when(col("is_matched"), F.lit(1.0)).otherwise(F.lit(0.0))
         )
         
         return df
+
+    def _build_old_style_expression(self, group) -> Column:
+        """
+        Build expression for old ConditionGroup or flat ConditionGroupConfig.
+        This is the existing logic.
+        """
+        # Check if it's old ConditionGroup with build_expression method
+        if hasattr(group, 'build_expression'):
+            # Old ConditionGroup - use existing method
+            return group.build_expression(
+                self.signal_thresholds,
+                self.signal_comparators
+            )
+        
+        # Otherwise handle as flat ConditionGroupConfig
+        expressions = []
+        
+        if hasattr(group, 'conditions') and group.conditions:
+            for signal_name, config in group.conditions.items():
+                threshold = config.threshold
+                comparator = (
+                    config.comparator.value 
+                    if hasattr(config.comparator, 'value') 
+                    else str(config.comparator).lower()
+                )
+                expr = _build_comparison_expr(signal_name, threshold, comparator)
+                expressions.append(expr)
+        
+        if not expressions:
+            return lit(True)
+        
+        group_op = (
+            group.operator.value.upper() 
+            if hasattr(group.operator, 'value') 
+            else str(group.operator).upper()
+        )
+        
+        if group_op == "AND":
+            return reduce(lambda a, b: a & b, expressions)
+        else:
+            return reduce(lambda a, b: a | b, expressions)
+
+
+    def _build_group_expression(self, group: ConditionGroupConfig) -> Column:
+        """
+        Recursively build expression for NEW nested ConditionGroupConfig.
+        Only called for new-style nested groups.
+        """
+        expressions = []
+        
+        # Process conditions
+        if group.conditions:
+            for signal_name, config in group.conditions.items():
+                threshold = config.threshold
+                comparator = (
+                    config.comparator.value 
+                    if hasattr(config.comparator, 'value') 
+                    else str(config.comparator).lower()
+                )
+                expr = _build_comparison_expr(signal_name, threshold, comparator)
+                expressions.append(expr)
+        
+        # Process nested groups (recursive)
+        if group.condition_groups:
+            for nested_group in group.condition_groups:
+                nested_expr = self._build_group_expression(nested_group)
+                expressions.append(nested_expr)
+        
+        # Combine
+        if not expressions:
+            return lit(True)
+        
+        group_op = (
+            group.operator.value.upper() 
+            if hasattr(group.operator, 'value') 
+            else str(group.operator).upper()
+        )
+        
+        if group_op == "AND":
+            return reduce(lambda a, b: a & b, expressions)
+        else:
+            return reduce(lambda a, b: a | b, expressions)
     
     def _validate_input_schema(self, df: DataFrame) -> None:
         """Validate required columns exist"""

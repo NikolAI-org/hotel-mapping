@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 from hotel_data.config.scoring_config import HotelClusteringConfig
 from hotel_data.pipeline.clustering.core.clustering_interfaces import Logger, ScoringStrategy
 from hotel_data.pipeline.clustering.infrastructure.logging.logger import ConsoleLogger
-from hotel_data.pipeline.clustering.services.conditiongroup_scoring_service import ThresholdScoringStrategy
+from hotel_data.pipeline.clustering.services.nested_scoring_service import ThresholdScoringStrategyV2
 
 class DependencyContainer:
     """
@@ -169,7 +169,7 @@ class DependencyContainer:
         logger = DependencyContainer.get_logger()
         
         # All dependencies injected via constructor
-        return ThresholdScoringStrategy(
+        return ThresholdScoringStrategyV2(
             config=config.scoring,  # Extract ScoringConfig
             logger=logger
         )
