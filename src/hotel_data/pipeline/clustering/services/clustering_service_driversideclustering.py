@@ -60,6 +60,7 @@ class DriverSideUnionFindClustering(ClusteringStrategy):
                 F.col("uid").isNotNull()
             ).select("uid").rdd.flatMap(lambda x: x).distinct().collect()
             
+            
             # Collect edges as (uid_i, uid_j) tuples
             edges_list = matched_pairs.filter(
                 (F.col("uid_i").isNotNull()) & (F.col("uid_j").isNotNull())
