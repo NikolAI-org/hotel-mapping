@@ -56,10 +56,14 @@ class DriverSideUnionFindClustering(ClusteringStrategy):
             
             # 2. COLLECT: Get all unique UIDs and Edges
             # Get every unique hotel fingerprint from the main hotel list
-            all_uids = hotels_df.select("uid").rdd.flatMap(lambda x: x).distinct().collect()
+            all_uids = hotels_df.filter(
+                F.col("uid").isNotNull()
+            ).select("uid").rdd.flatMap(lambda x: x).distinct().collect()
             
             # Collect edges as (uid_i, uid_j) tuples
-            edges_list = matched_pairs.rdd.map(lambda row: (row[0], row[1])).collect()
+            edges_list = matched_pairs.filter(
+                (F.col("uid_i").isNotNull()) & (F.col("uid_j").isNotNull())
+            ).rdd.map(lambda row: (row[0], row[1])).collect()
             
             self.logger.info(f"Collected {len(edges_list)} edges to driver")
             self.logger.info(f"Collected {len(all_uids)} unique hotel UIDs")
