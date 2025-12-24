@@ -17,6 +17,7 @@ from hotel_data.pipeline.preprocessor.processors.hotel_data_processor import Hot
 from hotel_data.pipeline.preprocessor.processors.lowercase_processor import LowercaseProcessor
 from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor import MandatoryFieldsFilterProcessor
 from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
+from hotel_data.pipeline.preprocessor.processors.stop_word_processor import StopWordProcessor
 from hotel_data.pipeline.preprocessor.processors.timestamp_processor import TimestampAppenderProcessor
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
@@ -97,6 +98,7 @@ def process_batch(batch_df, batch_id, manager):
         TimestampAppenderProcessor(),
         DefaultValueProcessor(critical_fields=CRITICAL_FIELDS),
         NameFormatterProcessor(ADDRESS_FIELDS),
+        StopWordProcessor(input_col="normalized_name", output_col="normalized_name")
     ])
     
     valid_df = transformation_pipeline.run(valid_df)

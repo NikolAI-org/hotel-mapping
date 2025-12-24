@@ -14,25 +14,49 @@ def _make_dynamic_cleaner(address_count: int):
     Create a Python function to be wrapped as a UDF.
     It accepts (name, *addresses) and removes each address (literal, case-insensitive).
     """
+
     def dynamic_cleaner(name: str, *addresses: str) -> str:
-        if name is None:
+        if not name:
             return None
 
         s = str(name)
-        # remove each provided address literal in a case-insensitive manner
-        for a in (addresses[:address_count] if addresses else []):
-            if a is None or a == "":
+        original_s = s  # Keep backup
+
+        # Filter valid addresses and SORT by length (Longest first).
+        # This prevents "New Delhi" being partially removed by "Delhi".
+        valid_addresses = [str(a) for a in (addresses[:address_count] if addresses else []) if a]
+        valid_addresses.sort(key=len, reverse=True)
+
+        for a in valid_addresses:
+            # 1. LENGTH GUARD: If address component matches the ENTIRE name, skip.
+            # (Prevents Name="Mumbai", City="Mumbai" -> Name="")
+            if s.lower().strip() == a.lower().strip():
                 continue
+
             try:
-                # escape to treat address as a literal substring
-                pattern = re.compile(re.escape(str(a)), flags=re.IGNORECASE)
+                # 2. WORD BOUNDARY LOGIC (\b)
+                # Escape the address string to handle parens/special chars safely
+                escaped_a = re.escape(a)
+
+                # Apply word boundaries only if the address starts/ends with alphanumerics
+                # This ensures we match " Pune " but not the "Pune" inside "Puneet"
+                pattern_str = escaped_a
+                if a[0].isalnum(): pattern_str = r"\b" + pattern_str
+                if a[-1].isalnum(): pattern_str = pattern_str + r"\b"
+
+                pattern = re.compile(pattern_str, flags=re.IGNORECASE)
                 s = pattern.sub("", s)
             except re.error:
-                # conservative fallback to plain replace if regex fails for any reason
-                s = s.replace(str(a), "")
+                # Fallback to simple replace if regex fails
+                s = s.replace(a, "")
 
         # collapse multiple spaces into one and trim
         s = re.sub(r"\s+", " ", s).strip()
+
+        # 3. ULTIMATE SAFETY: If we stripped everything, revert to original
+        if len(s) == 0 and len(original_s) > 0:
+            return original_s
+
         return s
 
     return dynamic_cleaner
@@ -40,10 +64,10 @@ def _make_dynamic_cleaner(address_count: int):
 
 class NameFormatterProcessor(BaseProcessor[DataFrame]):
     def __init__(
-        self,
-        address_fields: List[str],
-        name_col: str = "name",
-        output_col: str = "normalized_name",
+            self,
+            address_fields: List[str],
+            name_col: str = "name",
+            output_col: str = "normalized_name",
     ):
         self.address_fields = address_fields
         self.name_col = name_col
@@ -61,13 +85,13 @@ class NameFormatterProcessor(BaseProcessor[DataFrame]):
         # Build column list to pass into the UDF: (name_col, addr1, addr2, ...)
         udf_args: List[Column] = [col(self.name_col)] + [col(f) for f in self.address_fields]
 
-        # 1) Row-wise cleaning using UDF (avoids passing Column into regexp_replace pattern)
+        # 1) Row-wise cleaning using UDF
         cleaned_col: Column = self.dynamic_cleaner_udf(*udf_args)
 
-        # 2) Apply existing smart_suffix_udf (assumes it accepts (Column, Column) -> Column)
+        # 2) Apply existing smart_suffix_udf
         cleaned_col = smart_suffix_udf(cleaned_col, col("contact_address_line1"))
 
-        # 3) Final whitespace normalization (in case smart_suffix_udf introduced spaces)
+        # 3) Final whitespace normalization
         cleaned_col = trim(regexp_replace(cleaned_col, r"\s+", " "))
 
         return df.withColumn(self.output_col, cleaned_col)

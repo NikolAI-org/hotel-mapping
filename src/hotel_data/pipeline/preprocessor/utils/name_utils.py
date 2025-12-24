@@ -1,5 +1,6 @@
 import re
 from fuzzywuzzy import fuzz
+from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES
 
 JACCARD_ALGO = "jaccard"
 LCS_ALGO = "lcs"
@@ -25,23 +26,30 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
     nums1 = set(re.findall(r'\d+', s1))
     nums2 = set(re.findall(r'\d+', s2))
 
-    # Common stop words/terms often found in hotel names (LOWERCASE)
-    STOP_WORDS = {'hotel', 'inn', 'lodge', 'motel', 'resort', 'spa', 'hostal', 'guesthouse', 'casa', 'auberge',
-                  'apart-hotel', 'suites', 'executive suites', 'residences', 'b&b', 'bed and breakfast', 'hostel', 'at',
-                  'near', 'by', 'the', 'on', 'of', 'in', 'next to', 'close to', 'opposite', 'near to', 'located at',
-                  'located in', 'east', 'west', 'north', 'south', 'central', 'downtown', 'city', 'town', 'village',
-                  'metropolitan', 'airport', 'beach', 'waterfront', 'harbor', 'view', 'views', 'vista', 'garden',
-                  'gardens', 'park', 'plaza', 'square', 'terrace', 'court', 'quarters', 'grand', 'royal', 'king',
-                  'queen', 'palace', 'imperial', 'crown', 'premier', 'prestige', 'deluxe', 'luxury', 'superior',
-                  'exclusive', 'small', 'boutique', 'extended stay', 'budget', 'microtel', 'old', 'new', 'historic',
-                  'vintage', 'modern', 'a', 'an', 'and', 'for', 'with', 'to', 'or', 'via', 'from', 'is', 'just', 'plus',
-                  'el', 'la', 'los', 'las', 'del', 'de', 'y', 'le', 'les', 'du', 'des', 'et', 'chez', 'der', 'die',
-                  'das', 'und', 'il', 'i', 'gli', 'e', 'di'}
-
     def clean_and_tokenize(text):
         """Tokenizes the text, converts to lowercase, and filters stop words."""
+        # Note: We keep this because we need to support the raw 'name' column
+        # and we need to produce Sets/Sorted Strings for the algorithms.
+        if not text: return set()
+
+        # 1. Convert to lowercase first
+        text = text.lower()
+
+        # 2. Remove PHRASES (Order matters!)
+        # We use \b (word boundaries) to ensure we don't accidentally match inside words
+        # e.g. removing "oyo" shouldn't break "toyota"
+        for phrase in STOP_PHRASES:
+            # Pattern: \bphrase\b (whole word match only)
+            pattern = r"\b" + re.escape(phrase) + r"\b"
+            text = re.sub(pattern, " ", text)
+
+        # 3. Standard Cleanup (Punctuation)
         text = text.replace(',', ' ').replace('-', ' ').replace('.', ' ').strip()
-        tokens = text.lower().split()
+
+        # 4. Tokenize
+        tokens = text.split()
+
+        # 5. Filter single stop words
         return set(t for t in tokens if t not in STOP_WORDS and t.isalnum())
 
     # --- 1. Preprocessing (Common) ---
@@ -54,7 +62,9 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
     # --- 2. Jaccard Calculation ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = 1.0
+            final_score = 1.0  # Both empty/stop-words -> technically "same" info
+        elif not set1 or not set2:
+            final_score = 0.0
         else:
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
@@ -62,15 +72,24 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
 
     # --- 3. String Reconstruction (Needed for LCS & Levenshtein) ---
     elif algo in [LCS_ALGO, LEVENSHTEIN_ALGO]:
-        # Use the cleaned tokens joined back for check to handle word order
-        str1 = " ".join(sorted(list(set1))) if set1 else s1.lower()
-        str2 = " ".join(sorted(list(set2))) if set2 else s2.lower()
+        # Use the cleaned tokens joined back to handle word order
+        str1 = " ".join(sorted(list(set1))) if set1 else s1.lower().strip()
+        str2 = " ".join(sorted(list(set2))) if set2 else s2.lower().strip()
 
-        # Handle empty strings case immediately
+        # --- ISSUE 3 FIX: EMPTY DATA CHECK ---
+        # If both are empty (e.g. they were just stop words), score 0.0
         if not str1 and not str2:
-            final_score = 1.0
+            final_score = 0.0
         elif not str1 or not str2:
             final_score = 0.0
+
+        # --- NEW FIX: SINGLE LETTER BUG CHECK ("V" vs "Shivaji") ---
+        # If the cleaned string is tiny (< 3 chars), we require an EXACT match.
+        # "V" vs "V" -> Match.
+        # "V" vs "Shivaji" -> Mismatch.
+        elif (len(str1) < 3 or len(str2) < 3) and str1 != str2:
+            final_score = 0.0
+
         else:
             # LCS Logic
             if algo == LCS_ALGO:
