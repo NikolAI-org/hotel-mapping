@@ -50,7 +50,7 @@ def main():
         .config("spark.hadoop.datanucleus.autoCreateSchema", "true")
         .config("spark.hadoop.datanucleus.fixedDatastore", "true")
         .config("spark.sql.catalogImplementation", "hive")
-        .config("spark.executor.memory", "8g")
+        .config("spark.executor.memory", "10g")
         .config("spark.driver.memory", "4g")
         .enableHiveSupport()
         .getOrCreate()

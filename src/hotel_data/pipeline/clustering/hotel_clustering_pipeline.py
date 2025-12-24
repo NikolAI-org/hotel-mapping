@@ -62,6 +62,8 @@ def main():
         .enableHiveSupport()
         .getOrCreate()
     )
+
+    spark.sparkContext.setCheckpointDir("/tmp/checkpoints")
     
     # CRITICAL: Configure DependencyContainer
     DependencyContainer.configure(config, spark)

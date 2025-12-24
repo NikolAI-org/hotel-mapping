@@ -231,6 +231,24 @@ class HotelClusteringOrchestrator:
         """
         self.logger.debug("Creating clusters")
 
+        # 1. FILTER: Only keep pairs that are flagged as matches
+        #    (Assumes you have an 'is_match' or 'match_status' column from the scorer)
+        #    Adjust the filter condition based on your exact column name
+        if "is_matched" in scored_pairs_df.columns:
+            valid_edges_df = scored_pairs_df.filter(F.col("is_matched") == True)
+        elif "match_score" in scored_pairs_df.columns:
+            # Fallback if binary flag is missing: Use a strict threshold
+            valid_edges_df = scored_pairs_df.filter(F.col("match_score") > 0.85)
+        else:
+            # Safety valve: If we can't filter, we shouldn't run.
+            raise ValueError("Cannot filter pairs! Missing 'is_matched' or 'match_score' column.")
+
+        self.logger.info(
+            f"Filtering edges for clustering: {scored_pairs_df.count()} total -> {valid_edges_df.count()} matches"
+        )
+
+        # 2. CLUSTER: Run connected components on the sparse graph
+
         clusters_df = self.clusterer.cluster(hotels_df=hotels_df, scored_pairs_df=scored_pairs_df)
         clusters_df = clusters_df.cache()
         
@@ -331,7 +349,29 @@ class HotelClusteringOrchestrator:
         self.logger.debug("Writing results to storage")
         
         try:
-            self.metadata_recorder.record_metadata(scored_pairs_df, clusters_df,metadata=None)        
+            # 1. CRITICAL FIX: Join Cluster IDs back to the Scored Pairs
+            #    We join on 'id_i' (Hotel A) to see which cluster the pair belongs to.
+            #    (You could also join on id_j, but usually joining on the anchor 'id_i' is sufficient for analytics)
+
+            # Rename columns in clusters_df to avoid collision before joining
+            cluster_info = clusters_df.select(
+                F.col("id").alias("cluster_node_id"),
+                F.col("cluster_id"),
+                #F.col("is_representative")
+            )
+
+            # Join: scored_pairs.id_i == clusters.id
+            enriched_pairs_df = scored_pairs_df.join(
+                cluster_info,
+                scored_pairs_df.id_i == cluster_info.cluster_node_id,
+                "left"
+            )
+
+            # 2. Write the Tables (You seemed to be missing the actual table writes!)
+            self.writer.write(enriched_pairs_df, "hotel_pairs_clustered")
+            self.writer.write(clusters_df, "hotel_clusters")
+
+            self.metadata_recorder.record_metadata(enriched_pairs_df, clusters_df,metadata=None)
         except Exception as e:
             self.logger.error(f"Write failed: {str(e)}")
             raise
