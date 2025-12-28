@@ -62,7 +62,7 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
     # --- 2. Jaccard Calculation ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = 1.0  # Both empty/stop-words -> technically "same" info
+            final_score = 0.5  # Both empty/stop-words
         elif not set1 or not set2:
             final_score = 0.0
         else:
