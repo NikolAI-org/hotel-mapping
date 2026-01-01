@@ -120,42 +120,48 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             name_udf(
                 F.col("name_i"),
                 F.col("name_j"),
-                F.lit(JACCARD_ALGO)
+                F.lit(JACCARD_ALGO),
+                F.lit(False),
             )
         ).withColumn(
             "normalized_name_score_jaccard",
             name_udf(
                 F.col("normalized_name_i"),
                 F.col("normalized_name_j"),
-                F.lit(JACCARD_ALGO)
+                F.lit(JACCARD_ALGO),
+                F.lit(True),
             )
         ).withColumn(
             "name_score_lcs",
             name_udf(
                 F.col("name_i"),
                 F.col("name_j"),
-                F.lit(LCS_ALGO)
+                F.lit(LCS_ALGO),
+                F.lit(False),
             )
         ).withColumn(
             "normalized_name_score_lcs",
             name_udf(
                 F.col("normalized_name_i"),
                 F.col("normalized_name_j"),
-                F.lit(LCS_ALGO)
+                F.lit(LCS_ALGO),
+                F.lit(True),
             )
         ).withColumn(
             "name_score_levenshtein",
             name_udf(
                 F.col("name_i"),
                 F.col("name_j"),
-                F.lit(LEVENSHTEIN_ALGO)
+                F.lit(LEVENSHTEIN_ALGO),
+                F.lit(False),
             )
         ).withColumn(
             "normalized_name_score_levenshtein",
             name_udf(
                 F.col("normalized_name_i"),
                 F.col("normalized_name_j"),
-                F.lit(LEVENSHTEIN_ALGO)
+                F.lit(LEVENSHTEIN_ALGO),
+                F.lit(True),
             )
         )
 

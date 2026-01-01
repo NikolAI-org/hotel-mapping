@@ -7,7 +7,7 @@ LCS_ALGO = "lcs"
 LEVENSHTEIN_ALGO = "levenshtein"
 
 
-def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
+def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleaning: bool = True) -> float:
     """
     Calculates a similarity score based on the selected algorithm.
 
@@ -15,6 +15,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
         s1 (str): First string.
         s2 (str): Second string.
         algo (str): One of ['jaccard', 'lcs', 'levenshtein']. Defaults to 'jaccard'.
+        perform_cleaning (bool): If True, removes stop words/phrases.
+                                 Set to False for raw 'name' comparisons.
 
     Returns:
         float: Similarity score between 0.0 and 1.0.
@@ -38,10 +40,11 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
         # 2. Remove PHRASES (Order matters!)
         # We use \b (word boundaries) to ensure we don't accidentally match inside words
         # e.g. removing "oyo" shouldn't break "toyota"
-        for phrase in STOP_PHRASES:
-            # Pattern: \bphrase\b (whole word match only)
-            pattern = r"\b" + re.escape(phrase) + r"\b"
-            text = re.sub(pattern, " ", text)
+        if perform_cleaning:
+            for phrase in STOP_PHRASES:
+                # Pattern: \bphrase\b (whole word match only)
+                pattern = r"\b" + re.escape(phrase) + r"\b"
+                text = re.sub(pattern, " ", text)
 
         # 3. Standard Cleanup (Punctuation)
         text = text.replace(',', ' ').replace('-', ' ').replace('.', ' ').strip()
@@ -50,7 +53,11 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard') -> float:
         tokens = text.split()
 
         # 5. Filter single stop words
-        return set(t for t in tokens if t not in STOP_WORDS and t.isalnum())
+        if perform_cleaning:
+            return set(t for t in tokens if t not in STOP_WORDS and t.isalnum())
+        else:
+            # Just return all alphanumeric tokens
+            return set(t for t in tokens if t.isalnum())
 
     # --- 1. Preprocessing (Common) ---
     set1 = clean_and_tokenize(s1)
