@@ -173,8 +173,22 @@ class ThresholdScoringStrategyV2(ScoringStrategy):
         self.signal_comparators = {}
         if config.condition_groups is not None:
             self._extract_signal_configs(config.condition_groups)
-            # Build the condition tree from config
-            self.condition_tree = self._build_condition_tree(config.condition_groups)
+            
+            # FIX START: Determine root operator (default to AND if missing)
+            root_operator = "AND"
+            if hasattr(config, "group_operator") and config.group_operator:
+                root_operator = (
+                    config.group_operator.value 
+                    if hasattr(config.group_operator, "value") 
+                    else config.group_operator
+                ).upper()
+            
+            # Pass the root operator to the builder
+            self.condition_tree = self._build_condition_tree(
+                config.condition_groups, 
+                combine_operator=root_operator
+            )
+            # FIX END
 
         # Log the complete condition logic
         if self.condition_tree:
@@ -203,19 +217,13 @@ class ThresholdScoringStrategyV2(ScoringStrategy):
                             else cond_config.comparator
                         )
 
-    def _build_condition_tree(self, condition_groups: List) -> Optional[ConditionNode]:
+    def _build_condition_tree(
+        self, 
+        condition_groups: List, 
+        combine_operator: str = "AND"  # <--- New Argument
+    ) -> Optional[ConditionNode]:
         """
         Build a recursive condition tree from config structure.
-        
-        Expects config structure like:
-        condition_groups:
-            - operator: AND
-              conditions:
-                signal1: {threshold: X, comparator: gte}
-              # OR nested condition_groups:
-              condition_groups:
-                - operator: OR
-                  conditions: {...}
         """
         if not condition_groups:
             return None
@@ -223,20 +231,23 @@ class ThresholdScoringStrategyV2(ScoringStrategy):
         children = []
 
         for group in condition_groups:
-            operator = (
+            # Get operator for THIS group (controls its own children)
+            group_internal_operator = (
                 group.operator.value
                 if hasattr(group.operator, "value")
                 else group.operator
             ).upper()
 
             if hasattr(group, 'condition_groups') and group.condition_groups:
-                # This group contains nested groups - recurse
-                nested_tree = self._build_condition_tree(group.condition_groups)
+                # FIX: Recurse passing THIS group's operator as the unifier for its children
+                nested_tree = self._build_condition_tree(
+                    group.condition_groups, 
+                    combine_operator=group_internal_operator
+                )
                 if nested_tree:
                     children.append(nested_tree)
             
             if hasattr(group, 'conditions') and group.conditions:
-                # This group contains conditions - create leaves
                 leaves = []
                 for signal_name, cond_config in group.conditions.items():
                     comparator = (
@@ -251,9 +262,8 @@ class ThresholdScoringStrategyV2(ScoringStrategy):
                     ))
 
                 if leaves:
-                    # Create a node for this group's conditions
                     group_node = ConditionNode(
-                        operator=OperatorType[operator],
+                        operator=OperatorType[group_internal_operator],
                         children=leaves,
                         logger=self.logger
                     )
@@ -266,9 +276,9 @@ class ThresholdScoringStrategyV2(ScoringStrategy):
         if len(children) == 1:
             return children[0]
 
-        # Multiple children - create root node with AND (default behavior)
+        # FIX: Use the passed combine_operator instead of hardcoded AND
         return ConditionNode(
-            operator=OperatorType.AND,
+            operator=OperatorType[combine_operator],
             children=children,
             logger=self.logger
         )
