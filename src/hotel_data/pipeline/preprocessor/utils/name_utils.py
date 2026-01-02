@@ -80,8 +80,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 3. String Reconstruction (Needed for LCS & Levenshtein) ---
     elif algo in [LCS_ALGO, LEVENSHTEIN_ALGO]:
         # Use the cleaned tokens joined back to handle word order
-        str1 = " ".join(sorted(list(set1))) if set1 else s1.lower().strip()
-        str2 = " ".join(sorted(list(set2))) if set2 else s2.lower().strip()
+        str1 = " ".join(list(set1)) if set1 else s1.lower().strip()
+        str2 = " ".join(list(set2)) if set2 else s2.lower().strip()
 
         # --- ISSUE 3 FIX: EMPTY DATA CHECK ---
         # If both are empty (e.g. they were just stop words), score 0.0
