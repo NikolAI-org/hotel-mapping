@@ -28,13 +28,12 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     nums1 = set(re.findall(r'\d+', s1))
     nums2 = set(re.findall(r'\d+', s2))
 
-    def clean_and_tokenize(text):
+    # HELPER: Get Ordered Tokens (List)
+    def get_tokens(text):
         """Tokenizes the text, converts to lowercase, and filters stop words."""
         # Note: We keep this because we need to support the raw 'name' column
         # and we need to produce Sets/Sorted Strings for the algorithms.
-        if not text: return set()
-
-        # 1. Convert to lowercase first
+        if not text: return []
         text = text.lower()
 
         # 2. Remove PHRASES (Order matters!)
@@ -48,28 +47,29 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
 
         # 3. Standard Cleanup (Punctuation)
         text = text.replace(',', ' ').replace('-', ' ').replace('.', ' ').strip()
-
-        # 4. Tokenize
         tokens = text.split()
 
         # 5. Filter single stop words
         if perform_cleaning:
-            return set(t for t in tokens if t not in STOP_WORDS and t.isalnum())
+            return [t for t in tokens if t not in STOP_WORDS and t.isalnum()]
         else:
-            # Just return all alphanumeric tokens
-            return set(t for t in tokens if t.isalnum())
+            return [t for t in tokens if t.isalnum()]
 
-    # --- 1. Preprocessing (Common) ---
-    set1 = clean_and_tokenize(s1)
-    set2 = clean_and_tokenize(s2)
+    # --- 1. Preprocessing ---
+    # Get ORDERED lists first
+    tokens1 = get_tokens(s1)
+    tokens2 = get_tokens(s2)
 
-    # Initialize score variable
+    # Create SETS only for Jaccard
+    set1 = set(tokens1)
+    set2 = set(tokens2)
+
     final_score = 0.0
 
-    # --- 2. Jaccard Calculation ---
+    # --- 2. Jaccard Calculation (Uses Sets) ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = 0.5  # Both empty/stop-words
+            final_score = 0.5
         elif not set1 or not set2:
             final_score = 0.0
         else:
@@ -77,11 +77,11 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
             union = len(set1.union(set2))
             final_score = intersection / union if union > 0 else 0.0
 
-    # --- 3. String Reconstruction (Needed for LCS & Levenshtein) ---
+    # --- 3. String Reconstruction (Uses ORDERED Tokens) ---
     elif algo in [LCS_ALGO, LEVENSHTEIN_ALGO]:
-        # Use the cleaned tokens joined back to handle word order
-        str1 = " ".join(list(set1)) if set1 else s1.lower().strip()
-        str2 = " ".join(list(set2)) if set2 else s2.lower().strip()
+        # JOIN THE LISTS (Preserves "pinaki comfort stay")
+        str1 = " ".join(tokens1)
+        str2 = " ".join(tokens2)
 
         # --- ISSUE 3 FIX: EMPTY DATA CHECK ---
         # If both are empty (e.g. they were just stop words), score 0.0
