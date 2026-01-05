@@ -248,6 +248,7 @@ class StorageConfig:
 class ClusteringConfig:
     """Configuration for clustering strategy"""
     algorithm: str
+    transitivity: bool = True
     
     
     def validate(self) -> bool:

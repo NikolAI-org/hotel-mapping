@@ -185,6 +185,8 @@ class DependencyContainer:
         DEFAULT_ALGORITHM = "unionfind"
 
         raw_algorithm = getattr(config.clustering, "algorithm", None)
+        transitivity_enabled = getattr(config.clustering, "transitivity", True)
+        print(f"Clusterer is running with {raw_algorithm} algorithm and transitivity {transitivity_enabled}")
 
         algorithm = (
             raw_algorithm.strip().casefold()
@@ -196,6 +198,13 @@ class DependencyContainer:
             return FixedLabelPropagationClustering(
                     spark=spark,
                     logger=logger
+                )
+        if algorithm == 'clique':
+            from hotel_data.pipeline.clustering.services.clustering_service_cliqueclustering import FlexibleClustering
+            return FlexibleClustering(
+                    spark=spark,
+                    logger=logger,
+                    transitivity_enabled=transitivity_enabled
                 )
         else:
             from hotel_data.pipeline.clustering.services.clustering_service_driversideclustering import DriverSideUnionFindClustering

@@ -10,6 +10,11 @@ storage:
 scoring: 
   # Values can be lte, gte, gt, lt
   condition_groups:
+    - operator: AND
+      conditions:
+        geo_distance_km:
+          threshold: 0.5
+          comparator: lte
     - operator: OR
       conditions:
         name_score_jaccard:
@@ -29,40 +34,78 @@ scoring:
         - operator: AND
           conditions:
             name_score_jaccard:
-              threshold: 0.5
+              threshold: 0.75
               comparator: gte
             normalized_name_score_jaccard:
-              threshold: 0.7
+              threshold: 0.9
               comparator: gte
         - operator: AND
           conditions:
             name_score_lcs:
-              threshold: 0.5
+              threshold: 0.75
               comparator: gte
             normalized_name_score_lcs:
-              threshold: 0.7
+              threshold: 0.9
               comparator: gte
         - operator: AND
           conditions:
             name_score_levenshtein:
-              threshold: 0.5
+              threshold: 0.75
               comparator: gte
             normalized_name_score_levenshtein:
-              threshold: 0.7
+              threshold: 0.9
               comparator: gte
         - operator: AND
           conditions:
             name_score_sbert:
-              threshold: 0.5
+              threshold: 0.75
               comparator: gte
             normalized_name_score_sbert:
-              threshold: 0.7
+              threshold: 0.9
               comparator: gte
-  group_operator: OR
+    - operator: OR
+      conditions:
+        address_line1_score:
+          threshold: 0.2
+          comparator: gte
+        address_sbert_score:
+          threshold: 0.2
+          comparator: gte
+    - operator: AND
+      conditions:
+        star_ratings_score:
+          threshold: 0.0
+          comparator: gte
+    - operator: OR
+      conditions:
+        postal_code_match:
+          threshold: 0.5
+          comparator: gte
+        geo_distance_km:
+          threshold: 0.1
+          comparator: lte
+    - operator: AND
+      conditions:
+        country_match:
+          threshold: 0.5
+          comparator: gte
+    - operator: OR
+      conditions:
+        phone_match_score:
+          threshold: 0.5
+          comparator: gte
+        email_match_score:
+          threshold: 0.5
+          comparator: gte
+        fax_match_score:
+          threshold: 0.5
+          comparator: gte
+  group_operator: AND
 
 clustering:
-  algorithm: unionfind
-  # Options could be labelpropagation, unionfind
+  algorithm: clique
+  # Options could be labelpropagation, unionfind, clique
+  transitivity: True
 
 streaming:
   enabled: false
