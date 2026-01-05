@@ -7,100 +7,93 @@ storage:
   minio_bucket: "hotel-data"
   delta_path: "s3a://hotel-data/delta"
 
-scoring: 
-  # Values can be lte, gte, gt, lt
-  condition_groups:
-    - operator: AND
-      conditions:
-        geo_distance_km:
-          threshold: 0.5
-          comparator: lte
-    - operator: OR
-      conditions:
-        name_score_jaccard:
-          threshold: 0.9
-          comparator: gte
-        name_score_lcs:
-          threshold: 0.9
-          comparator: gte
-        name_score_levenshtein:
-          threshold: 0.9
-          comparator: gte
-        name_score_sbert:
-          threshold: 0.9
-          comparator: gte
-    - operator: OR
-      condition_groups:
-        - operator: AND
-          conditions:
-            name_score_jaccard:
-              threshold: 0.75
-              comparator: gte
-            normalized_name_score_jaccard:
-              threshold: 0.9
-              comparator: gte
-        - operator: AND
-          conditions:
-            name_score_lcs:
-              threshold: 0.75
-              comparator: gte
-            normalized_name_score_lcs:
-              threshold: 0.9
-              comparator: gte
-        - operator: AND
-          conditions:
-            name_score_levenshtein:
-              threshold: 0.75
-              comparator: gte
-            normalized_name_score_levenshtein:
-              threshold: 0.9
-              comparator: gte
-        - operator: AND
-          conditions:
-            name_score_sbert:
-              threshold: 0.75
-              comparator: gte
-            normalized_name_score_sbert:
-              threshold: 0.9
-              comparator: gte
-    - operator: OR
-      conditions:
-        address_line1_score:
-          threshold: 0.2
-          comparator: gte
-        address_sbert_score:
-          threshold: 0.2
-          comparator: gte
-    - operator: AND
-      conditions:
-        star_ratings_score:
-          threshold: 0.0
-          comparator: gte
-    - operator: OR
-      conditions:
-        postal_code_match:
-          threshold: 0.5
-          comparator: gte
-        geo_distance_km:
-          threshold: 0.1
-          comparator: lte
-    - operator: AND
-      conditions:
-        country_match:
-          threshold: 0.5
-          comparator: gte
-    - operator: OR
-      conditions:
-        phone_match_score:
-          threshold: 0.5
-          comparator: gte
-        email_match_score:
-          threshold: 0.5
-          comparator: gte
-        fax_match_score:
-          threshold: 0.5
-          comparator: gte
-  group_operator: AND
+scoring:
+  match_logic:
+    operator: AND
+    rules:
+      # 1: Simple Leaf (Unary context)
+      - signal: geo_distance_km
+        threshold: 0.5
+        comparator: lte
+      - operator: OR
+        rules:
+          - signal: name_score_jaccard
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_lcs
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_levenshtein
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_sbert
+            threshold: 0.9
+            comparator: gte
+          - operator: AND
+            rules:
+              - signal: name_score_jaccard
+                threshold: 0.75
+                comparator: gte
+              - signal: normalized_name_score_jaccard
+                threshold: 0.9
+                comparator: gte
+          - operator: AND
+            rules:
+              - signal: name_score_lcs
+                threshold: 0.75
+                comparator: gte
+              - signal: normalized_name_score_lcs
+                threshold: 0.9
+                comparator: gte
+          - operator: AND
+            rules:
+              - signal: name_score_levenshtein
+                threshold: 0.75
+                comparator: gte
+              - signal: normalized_name_score_levenshtein
+                threshold: 0.9
+                comparator: gte
+          - operator: AND
+            rules:
+              - signal: name_score_sbert
+                threshold: 0.75
+                comparator: gte
+              - signal: normalized_name_score_sbert
+                threshold: 0.9
+                comparator: gte
+      - operator: OR
+        rules:
+          - signal: address_line1_score
+            threshold: 0.2
+            comparator: gte
+          - signal: address_sbert_score
+            threshold: 0.2
+            comparator: gte
+      - signal: star_ratings_score
+        threshold: 0.0
+        comparator: gte
+      - operator: OR
+        rules:
+          - signal: postal_code_match
+            threshold: 0.5
+            comparator: gte
+          - signal: geo_distance_km
+            threshold: 0.1
+            comparator: lte
+      - signal: country_match
+        threshold: 0.5
+        comparator: gte
+      - operator: OR
+        rules:
+          - signal: phone_match_score
+            threshold: 0.5
+            comparator: gte
+          - signal: email_match_score
+            threshold: 0.5
+            comparator: gte
+          - signal: fax_match_score
+            threshold: 0.5
+            comparator: gte
 
 clustering:
   algorithm: clique

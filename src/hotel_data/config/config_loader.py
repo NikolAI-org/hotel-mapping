@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 
-from hotel_data.config.scoring_config import ConditionConfig, ConditionGroupConfig, HotelClusteringConfig, ScoringConfig
+from hotel_data.config.scoring_config import HotelClusteringConfig, ScoringConfig
 
 class ConfigLoader:
     """

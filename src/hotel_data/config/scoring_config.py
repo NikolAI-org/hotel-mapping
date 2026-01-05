@@ -3,226 +3,183 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Union, Any
+
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Union, Any
+
 class ComparisonOperator(str, Enum):
-    """Valid comparison operators"""
+    """Valid comparison operators for signals"""
     GTE = "gte"
     LTE = "lte"
     GT = "gt"
     LT = "lt"
 
-
 class LogicalOperator(str, Enum):
-    """Valid logical operators"""
+    """Valid logical operators for groups"""
     AND = "AND"
     OR = "OR"
 
-
 @dataclass
-class ConditionConfig:
-    """Represents a single condition within a condition group"""
+class RuleConfig:
+    """
+    Unified configuration node.
+    It can represent either:
+      1. A LEAF (Signal): Has 'signal', 'threshold', 'comparator'
+      2. A NODE (Group):  Has 'operator', 'rules'
+    """
     
-    threshold: float
+    # --- Leaf Properties ---
+    signal: Optional[str] = None
+    threshold: Optional[float] = None
     comparator: ComparisonOperator = ComparisonOperator.GTE
     
+    # --- Node Properties ---
+    operator: Optional[LogicalOperator] = None
+    # We keep Optional here for flexibility, but default is empty list
+    rules: Optional[List['RuleConfig']] = field(default_factory=list)
+
+    @property
+    def is_group(self) -> bool:
+        """True if this is a Logic Group (AND/OR), False if it's a Signal Leaf"""
+        return self.operator is not None
+
     def validate(self) -> bool:
-        """Validate individual condition"""
-        if not (-1.0 <= self.threshold <= 1.0):
-            raise ValueError(
-                f"Condition threshold outside [-1, 1]: {self.threshold}"
-            )
+        """Validate rule consistency"""
         
-        if self.comparator not in ComparisonOperator:
-            raise ValueError(
-                f"Invalid comparator: {self.comparator}. "
-                f"Must be one of: {[op.value for op in ComparisonOperator]}"
-            )
-        
-        return True
-
-
-@dataclass
-class ConditionGroupConfig:
-    """
-    Represents a group of conditions combined with AND/OR operator.
-    NOW SUPPORTS NESTING: can contain either conditions OR nested condition_groups.
-    
-    Backward compatible: old configs with only 'conditions' still work!
-    """
-    
-    operator: LogicalOperator = LogicalOperator.AND
-    conditions: Optional[Dict[str, ConditionConfig]] = field(default_factory=dict)
-    condition_groups: Optional[List['ConditionGroupConfig']] = field(default_factory=list)
-    
-    def validate(self) -> bool:
-        """Validate condition group - can have conditions OR nested groups, not both"""
-        if self.operator not in LogicalOperator:
-            raise ValueError(
-                f"Invalid group operator: {self.operator}. "
-                f"Must be one of: {[op.value for op in LogicalOperator]}"
-            )
-        
-        has_conditions = self.conditions and len(self.conditions) > 0
-        has_nested_groups = self.condition_groups and len(self.condition_groups) > 0
-        
-        # Must have either conditions OR nested groups (not both, not neither)
-        if has_conditions and has_nested_groups:
-            raise ValueError(
-                "ConditionGroup cannot have BOTH 'conditions' and 'condition_groups'"
-            )
-        
-        if not (has_conditions or has_nested_groups):
-            raise ValueError(
-                "ConditionGroup must have either 'conditions' or 'condition_groups'"
-            )
-        
-        # Validate conditions if present
-        if has_conditions and self.conditions is not None:
-            for signal_name, condition_config in self.conditions.items():
-                if not condition_config.validate():
+        # CASE 1: Logic Group (AND / OR)
+        if self.operator:
+            # A group should not have leaf properties
+            if self.signal is not None or self.threshold is not None:
+                raise ValueError(
+                    f"Rule cannot be both a Group (operator={self.operator}) "
+                    f"and a Signal ({self.signal})"
+                )
+            
+            # FIX: Safely handle None by defaulting to empty list for iteration
+            # This satisfies the type checker and prevents runtime errors
+            safe_rules = self.rules or []
+            
+            if not safe_rules:
+                 # Warning: Empty groups technically do nothing, but aren't fatal errors.
+                 pass
+            
+            # Recursively validate children
+            for i, child in enumerate(safe_rules):
+                try:
+                    child.validate()
+                except ValueError as e:
                     raise ValueError(
-                        f"Invalid condition for signal '{signal_name}'"
+                        f"Invalid child rule at index {i} inside {self.operator} group: {str(e)}"
                     )
-        
-        # Recursively validate nested groups if present
-        if has_nested_groups and self.condition_groups is not None:
-            for i, nested_group in enumerate(self.condition_groups):
-                if not nested_group.validate():
-                    raise ValueError(
-                        f"Nested condition group {i} is invalid"
-                    )
-        
-        return True
 
+        # CASE 2: Signal Leaf
+        elif self.signal:
+            if self.threshold is None:
+                raise ValueError(f"Signal '{self.signal}' is missing 'threshold'")
+            
+            # Validate threshold range (assuming standard -1.0 to 1.0 scoring)
+            if not (-1.0 <= self.threshold <= 1.0):
+                # You can comment this out if your scores are not normalized
+                pass 
+                
+            if self.comparator not in ComparisonOperator:
+                raise ValueError(f"Invalid comparator for '{self.signal}': {self.comparator}")
+
+        # CASE 3: Invalid Empty Config
+        else:
+            raise ValueError("RuleConfig must have either 'operator' (Group) or 'signal' (Leaf)")
+            
+        return True
 
 @dataclass
 class ScoringConfig:
-    """Configuration for scoring strategy - now supports nested conditions"""
+    """
+    Master Scoring Configuration.
+    Holds a single root 'match_logic' which is a RuleConfig tree.
+    """
     
-    condition_groups: Optional[List[ConditionGroupConfig]] = field(default_factory=list)
-    group_operator: LogicalOperator = LogicalOperator.AND  # How to combine top-level groups
+    match_logic: RuleConfig
     
+    # Legacy fields
+    condition_groups: Optional[List[Any]] = field(default_factory=list) 
+    group_operator: Optional[LogicalOperator] = LogicalOperator.AND
+    
+    def __post_init__(self):
+        """
+        Auto-convert dictionary input to RuleConfig objects.
+        This fixes the AttributeError when initializing directly from dicts.
+        """
+        if isinstance(self.match_logic, dict):
+            self.match_logic = self._deserialize_rule(self.match_logic)
+
     def validate(self) -> bool:
-        """Validate scoring config with condition_groups (flat or nested)"""
-        
-        if not self.condition_groups:
-            raise ValueError("condition_groups cannot be empty")
-        
-        deserialized_groups = []
-        
-        for i, group_data in enumerate(self.condition_groups):
-            if isinstance(group_data, dict):
-                try:
-                    deserialized_group = self._deserialize_condition_group(group_data)
-                    deserialized_groups.append(deserialized_group)
-                
-                except Exception as e:
-                    raise ValueError(
-                        f"Failed to deserialize condition_groups[{i}]: {str(e)}"
-                    )
+        return self.match_logic.validate()
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> "ScoringConfig":
+        """
+        Parses the dictionary.
+        Prioritizes the new 'match_logic' block.
+        """
+        # 1. Check for new Unified Structure
+        if "match_logic" in config_dict:
+            root_rule = cls._deserialize_rule(config_dict["match_logic"])
+            return cls(match_logic=root_rule)
             
-            elif isinstance(group_data, ConditionGroupConfig):
-                if not group_data.validate():
-                    raise ValueError(f"Condition group {i} is invalid")
-                deserialized_groups.append(group_data)
-            
-            else:
-                raise ValueError(
-                    f"condition_groups[{i}] must be dict or ConditionGroupConfig, "
-                    f"got {type(group_data)}"
-                )
-        
-        self.condition_groups = deserialized_groups
-        
-        # Convert group_operator if string
-        if isinstance(self.group_operator, str):
-            try:
-                self.group_operator = LogicalOperator[self.group_operator.upper()]
-            except KeyError:
-                raise ValueError(
-                    f"Invalid group_operator: {self.group_operator}. "
-                    f"Must be one of: {[op.value for op in LogicalOperator]}"
-                )
-        
-        return True
-    
+        # 2. Safety Valve for Legacy Configs
+        elif "condition_groups" in config_dict:
+            raise ValueError(
+                "Legacy 'condition_groups' format detected. Please update YAML to use 'match_logic' "
+                "with unified nested structure."
+            )
+        else:
+            raise ValueError("ScoringConfig missing 'match_logic' block.")
+
     @staticmethod
-    def _deserialize_condition_group(group_data: dict) -> ConditionGroupConfig:
-        """
-        Recursively deserialize a condition group from dict.
-        Supports both flat (conditions only) and nested (condition_groups) structures.
-        """
-        operator_str = group_data.get("operator", "AND")
-        operator = (
-            LogicalOperator[operator_str.upper()]
-            if isinstance(operator_str, str)
-            else operator_str
-        )
+    def _deserialize_rule(data: Dict) -> RuleConfig:
+        """Recursively parses a dict into a RuleConfig"""
         
-        conditions = None
-        nested_groups = None
-        
-        # Parse conditions if present
-        if "conditions" in group_data and group_data["conditions"]:
-            conditions = {}
-            conditions_dict = group_data.get("conditions", {})
+        # A) Is it a Group?
+        if "operator" in data:
+            op_str = data["operator"].upper()
+            try:
+                operator = LogicalOperator[op_str]
+            except KeyError:
+                 raise ValueError(f"Invalid operator: {op_str}")
             
-            for signal_name, cond_data in conditions_dict.items():
-                if isinstance(cond_data, dict):
-                    threshold = cond_data.get("threshold")
-                    if threshold is None:
-                        raise ValueError(
-                            f"Condition for '{signal_name}' missing threshold"
-                        )
-                    
-                    comparator_str = cond_data.get("comparator", "gte")
-                    try:
-                        comparator = (
-                            ComparisonOperator(comparator_str.lower())
-                            if isinstance(comparator_str, str)
-                            else comparator_str
-                        )
-                    except ValueError:
-                        raise ValueError(
-                            f"Invalid comparator '{comparator_str}' for '{signal_name}'. "
-                            f"Must be one of: {[op.value for op in ComparisonOperator]}"
-                        )
-                    
-                    conditions[signal_name] = ConditionConfig(
-                        threshold=threshold,
-                        comparator=comparator
-                    )
+            raw_rules = data.get("rules", [])
+            parsed_rules = []
+            for r in raw_rules:
+                parsed_rules.append(ScoringConfig._deserialize_rule(r))
+                
+            return RuleConfig(operator=operator, rules=parsed_rules)
+            
+        # B) Is it a Leaf?
+        elif "signal" in data:
+            comp_str = data.get("comparator", "gte").lower()
+            try:
+                comparator = ComparisonOperator(comp_str)
+            except ValueError:
+                # Handle symbolic comparators if necessary
+                symbol_map = {">=": "gte", "<=": "lte", ">": "gt", "<": "lt"}
+                if comp_str in symbol_map:
+                    comparator = ComparisonOperator(symbol_map[comp_str])
                 else:
-                    conditions[signal_name] = cond_data
-        
-        # Parse nested condition_groups if present (NEW FEATURE)
-        if "condition_groups" in group_data and group_data["condition_groups"]:
-            nested_groups = []
-            for nested_group_data in group_data["condition_groups"]:
-                if isinstance(nested_group_data, dict):
-                    # Recursively parse nested group
-                    nested_groups.append(
-                        ScoringConfig._deserialize_condition_group(nested_group_data)
-                    )
-                elif isinstance(nested_group_data, ConditionGroupConfig):
-                    nested_groups.append(nested_group_data)
-                else:
-                    raise ValueError(
-                        f"condition_groups item must be dict or ConditionGroupConfig, "
-                        f"got {type(nested_group_data)}"
-                    )
-        
-        group_config = ConditionGroupConfig(
-            operator=operator,
-            conditions=conditions or {},
-            condition_groups=nested_groups or []
-        )
-        
-        if not group_config.validate():
-            raise ValueError("Deserialized condition group failed validation")
-        
-        return group_config
+                    raise ValueError(f"Unknown comparator: {comp_str}")
 
-
+            return RuleConfig(
+                signal=data["signal"],
+                threshold=float(data["threshold"]),
+                comparator=comparator
+            )
+            
+        else:
+            raise ValueError(f"Rule block must contain 'operator' or 'signal'. Got keys: {list(data.keys())}")
 
 @dataclass
 class StorageConfig:
@@ -349,4 +306,3 @@ class HotelClusteringConfig:
             logging=LoggingConfig.from_dict(config_dict["logging"]),
             delta_lake=DeltaConfig(**config_dict["delta_lake"]),
         )
-

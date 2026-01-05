@@ -57,7 +57,88 @@
 
 
     ```
-# Clustering 
+# Match Logic Configuration Guide
+1. The Building Blocks
+A. The Signal (Leaf)
+```
+- signal: <column_name>
+  threshold: <float_value>   # Value between -1.0 and 1.0
+  comparator: <op>           # Optional. Default: gte (>=)
+```
+Valid Comparators: gte (>=), lte (<=), gt (>), lt (<)
+B. The Logic Group (Node)
+A group combines multiple rules using a logical operator.
+```
+- operator: <AND|OR>
+  rules:
+    - ... (list of other Signals or Groups)
+```
+2. Configuration Structure
+The configuration file must contain a root match_logic block.
+```
+scoring:
+  match_logic:
+    operator: AND   # The Root is usually an 'AND' group
+    rules:
+      # ... your rules go here
+```
+3. Examples
+Example 1: Simple Logic
+Requirement: "Must be within 0.5km AND have a name score >= 0.8"
+```
+match_logic:
+  operator: AND
+  rules:
+    - signal: geo_distance_km
+      threshold: 0.5
+      comparator: lte
+    - signal: name_score_jaccard
+      threshold: 0.8
+      comparator: gte
+```
+Example 2: Complex Nested Logic (The "Hotel Match" Standard)
+Requirement:
+Geo: Must be within 0.5km.
+Name: Must match strongly on any single metric OR match moderately on composite metrics.
+Validation: Must match Address OR Phone OR Email.
+```
+match_logic:
+  operator: AND
+  rules:
+    # --- 1. MANDATORY GEO FILTER ---
+    - signal: geo_distance_km
+      threshold: 0.5
+      comparator: lte
+
+    # --- 2. NAME MATCHING (Nested OR) ---
+    - operator: OR
+      rules:
+        # A. Strong Single Matches
+        - signal: name_score_jaccard
+          threshold: 0.9
+        - signal: name_score_levenshtein
+          threshold: 0.9
+        
+        # B. Composite Weak Matches (AND inside OR)
+        - operator: AND
+          rules:
+            - signal: name_score_jaccard
+              threshold: 0.75
+            - signal: normalized_name_score_jaccard
+              threshold: 0.9
+
+    # --- 3. SECONDARY VALIDATION (At least one must match) ---
+    - operator: OR
+      rules:
+        - signal: address_line1_score
+          threshold: 0.2
+        - signal: phone_match_score
+          threshold: 0.5
+        - signal: email_match_score
+          threshold: 0.5
+```
+
+# Clustering
 - Pipelines for executing the cluster logic
 ```
 Create actual cluster: poetry run python -m hotel_data.pipeline.clustering.hotel_clustering_pipeline
