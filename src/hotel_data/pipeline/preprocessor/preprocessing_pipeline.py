@@ -19,6 +19,7 @@ from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor impo
 from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
 from hotel_data.pipeline.preprocessor.processors.stop_word_processor import StopWordProcessor
 from hotel_data.pipeline.preprocessor.processors.timestamp_processor import TimestampAppenderProcessor
+from hotel_data.pipeline.preprocessor.processors.uid_processor import UIDProcessor
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 from hotel_data.schema.input.preprocessor_schema import hotel_schema
@@ -98,7 +99,8 @@ def process_batch(batch_df, batch_id, manager):
         TimestampAppenderProcessor(),
         DefaultValueProcessor(critical_fields=CRITICAL_FIELDS),
         NameFormatterProcessor(ADDRESS_FIELDS),
-        StopWordProcessor(input_col="normalized_name", output_col="normalized_name")
+        StopWordProcessor(input_col="normalized_name", output_col="normalized_name"),
+        UIDProcessor()
     ])
     
     valid_df = transformation_pipeline.run(valid_df)
@@ -107,7 +109,7 @@ def process_batch(batch_df, batch_id, manager):
     # COMBINED SBERT STEP: Run UDF once for all columns
     valid_df = valid_df.withColumn(
         "all_vecs", 
-        compute_all_embeddings(struct("name", "normalized_name", "combined_address"))
+        compute_all_embeddings(struct("name", "normalized_name", "combined_address")) # type: ignore
     ).select(
         "*",
         col("all_vecs.name_embedding"),
