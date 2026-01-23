@@ -12,6 +12,33 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Union, Any
 
+class ScoringConstants:
+    """
+    Centralized configuration for scoring rewards and penalties.
+    Change values here to affect name_utils.py logic.
+    """
+
+    # Reward when both sets are empty (e.g., just stop words) in Jaccard
+    JACCARD_BOTH_EMPTY_SCORE = 0.5
+
+    # Score when one side is empty in Jaccard
+    JACCARD_ONE_SIDE_EMPTY_SCORE = 0.0
+
+    # Score when reconstructed strings (LCS/Levenshtein) are empty
+    RECONSTRUCTION_EMPTY_SCORE = 0.0
+
+    # Penalty applied when numeric tokens mismatch (e.g. "OYO 1" vs "OYO 2")
+    NUMERIC_MISMATCH_PENALTY = 0.7
+
+    # --- NEW FIX: SINGLE LETTER BUG CHECK ("V" vs "Shivaji") ---
+    # If the cleaned string is tiny (< 3 chars), we require an EXACT match.
+    # "V" vs "V" -> Match.
+    # "V" vs "Shivaji" -> Mismatch.
+    MIN_CHARS_REQUIRED_FOR_MATCHING = 3
+
+    MIN_CHARS_MISSING_SCORE = 0
+
+
 class ComparisonOperator(str, Enum):
     """Valid comparison operators for signals"""
     GTE = "gte"

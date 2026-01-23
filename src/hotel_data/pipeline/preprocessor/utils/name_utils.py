@@ -1,6 +1,7 @@
 import re
 from fuzzywuzzy import fuzz
 from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES
+from hotel_data.config.scoring_config import ScoringConstants
 
 JACCARD_ALGO = "jaccard"
 LCS_ALGO = "lcs"
@@ -69,9 +70,9 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 2. Jaccard Calculation (Uses Sets) ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = 0.5
+            final_score = ScoringConstants.JACCARD_BOTH_EMPTY_SCORE #0.5
         elif not set1 or not set2:
-            final_score = 0.0
+            final_score = ScoringConstants.JACCARD_ONE_SIDE_EMPTY_SCORE #0.0
         else:
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
@@ -86,16 +87,16 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
         # --- ISSUE 3 FIX: EMPTY DATA CHECK ---
         # If both are empty (e.g. they were just stop words), score 0.0
         if not str1 and not str2:
-            final_score = 0.0
+            final_score = ScoringConstants.RECONSTRUCTION_EMPTY_SCORE #0.0
         elif not str1 or not str2:
-            final_score = 0.0
+            final_score = ScoringConstants.RECONSTRUCTION_EMPTY_SCORE #0.0
 
         # --- NEW FIX: SINGLE LETTER BUG CHECK ("V" vs "Shivaji") ---
         # If the cleaned string is tiny (< 3 chars), we require an EXACT match.
         # "V" vs "V" -> Match.
         # "V" vs "Shivaji" -> Mismatch.
-        elif (len(str1) < 3 or len(str2) < 3) and str1 != str2:
-            final_score = 0.0
+        elif (len(str1) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING or len(str2) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING) and str1 != str2:
+            final_score = ScoringConstants.MIN_CHARS_MISSING_SCORE #0.0
 
         else:
             # LCS Logic
@@ -129,7 +130,7 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # Logic: If BOTH have numbers, and those numbers are DIFFERENT, apply penalty.
     # This applies to the result of ANY selected algorithm.
     if nums1 and nums2 and nums1 != nums2:
-        final_score -= 0.7
+        final_score -= ScoringConstants.NUMERIC_MISMATCH_PENALTY #0.7
 
     # Ensure score doesn't drop below zero
     return max(0.0, final_score)
