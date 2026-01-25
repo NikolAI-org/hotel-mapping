@@ -2,11 +2,15 @@
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from sympy.physics.quantum.gate import normalized
-
+from pyspark.sql.types import FloatType
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_score
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
-from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer, JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO
+from hotel_data.pipeline.preprocessor.utils.name_utils import (
+    enhanced_name_scorer,
+    get_numeric_penalty,
+    JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO
+)
 from hotel_data.pipeline.preprocessor.utils.phone_number_utils import normalize_phone_expr, arrays_overlap_check
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
@@ -165,19 +169,40 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             )
         )
 
-        sbert = jaccard_lcs_levenshtein.withColumn(
-            "name_score_sbert",
-            get_cosine_similarity_expr(F.col("name_embedding_i"), F.col("name_embedding_j")).cast("float")
-        )
-        # Handle cases where embedding might be null (fill with 0.0)
-        sbert = sbert.fillna(0.0, subset=["name_score_sbert"])
+        penalty_udf = F.udf(get_numeric_penalty, FloatType())
 
-        normalized_sbert = sbert.withColumn(
-            "normalized_name_score_sbert",
+        sbert_df = jaccard_lcs_levenshtein.withColumn(
+            "raw_sbert_score",
+            get_cosine_similarity_expr(F.col("name_embedding_i"), F.col("name_embedding_j")).cast("float")
+        ).withColumn(
+            "raw_norm_sbert_score",
             get_cosine_similarity_expr(F.col("normalized_name_embedding_i"), F.col("normalized_name_embedding_j")).cast("float")
         )
+
+        # Apply Penalty to SBERT
+        # Formula: Final_SBERT = Max(0, Raw_SBERT - Penalty)
+        sbert_penalized = sbert_df.withColumn(
+            "name_score_sbert",
+            F.greatest(
+                F.lit(0.0),
+                F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+            ).cast("float")
+        ).withColumn(
+            "normalized_name_score_sbert",
+            F.greatest(
+                F.lit(0.0),
+                F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"), F.col("normalized_name_j"))
+            ).cast("float")
+        )
+
+        # Clean up temporary columns
+        df_final = sbert_penalized.drop("raw_sbert_score", "raw_norm_sbert_score")
+
         # Handle cases where embedding might be null (fill with 0.0)
-        normalized_sbert = normalized_sbert.fillna(0.0, subset=["normalized_name_score_sbert"])
+        sbert = df_final.fillna(0.0, subset=["name_score_sbert"])
+
+        # Handle cases where embedding might be null (fill with 0.0)
+        normalized_sbert = sbert.fillna(0.0, subset=["normalized_name_score_sbert"])
 
         # Register UDF
         token_sort_udf = F.udf(token_sort_score, "float")
