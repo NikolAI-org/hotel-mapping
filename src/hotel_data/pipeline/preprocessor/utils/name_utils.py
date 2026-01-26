@@ -87,9 +87,9 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 2. Jaccard Calculation (Uses Sets) ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = ScoringConstants.JACCARD_BOTH_EMPTY_SCORE #0.5
+            final_score = ScoringConstants.BOTH_EMPTY_SCORE #0.5
         elif not set1 or not set2:
-            final_score = ScoringConstants.JACCARD_ONE_SIDE_EMPTY_SCORE #0.0
+            final_score = ScoringConstants.ONE_SIDE_EMPTY_SCORE #0.0
         else:
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))

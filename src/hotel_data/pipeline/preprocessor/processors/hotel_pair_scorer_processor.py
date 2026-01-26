@@ -11,6 +11,7 @@ from hotel_data.pipeline.preprocessor.utils.name_utils import (
     get_numeric_penalty,
     JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO
 )
+from hotel_data.config.scoring_config import ScoringConstants
 from hotel_data.pipeline.preprocessor.utils.phone_number_utils import normalize_phone_expr, arrays_overlap_check
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
@@ -179,19 +180,42 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             get_cosine_similarity_expr(F.col("normalized_name_embedding_i"), F.col("normalized_name_embedding_j")).cast("float")
         )
 
-        # Apply Penalty to SBERT
-        # Formula: Final_SBERT = Max(0, Raw_SBERT - Penalty)
+        # HELPER: Check for Empty/Null Strings
+        def is_empty(col_name):
+            return F.col(col_name).isNull() | (F.trim(F.col(col_name)) == "")
+
+        # 3. Apply Empty Logic + Penalty to SBERT
         sbert_penalized = sbert_df.withColumn(
             "name_score_sbert",
-            F.greatest(
-                F.lit(0.0),
-                F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+            F.when(
+                is_empty("name_i") & is_empty("name_j"),
+                F.lit(ScoringConstants.BOTH_EMPTY_SCORE)  # 0.5
+            ).when(
+                is_empty("name_i") | is_empty("name_j"),
+                F.lit(ScoringConstants.ONE_SIDE_EMPTY_SCORE)  # 0.0
+            ).otherwise(
+                F.greatest(
+                    F.lit(0.0),
+                    F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+                )
             ).cast("float")
         ).withColumn(
             "normalized_name_score_sbert",
-            F.greatest(
-                F.lit(0.0),
-                F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"), F.col("normalized_name_j"))
+            F.when(
+                # CASE: Both Normalized Names are Empty -> 0.5 (Matches Jaccard)
+                is_empty("normalized_name_i") & is_empty("normalized_name_j"),
+                F.lit(ScoringConstants.BOTH_EMPTY_SCORE)
+            ).when(
+                # CASE: One is Empty -> 0.0
+                is_empty("normalized_name_i") | is_empty("normalized_name_j"),
+                F.lit(ScoringConstants.ONE_SIDE_EMPTY_SCORE)
+            ).otherwise(
+                # CASE: Normal -> Cosine - Penalty
+                F.greatest(
+                    F.lit(0.0),
+                    F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"),
+                                                                F.col("normalized_name_j"))
+                )
             ).cast("float")
         )
 

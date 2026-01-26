@@ -19,10 +19,10 @@ class ScoringConstants:
     """
 
     # Reward when both sets are empty (e.g., just stop words) in Jaccard
-    JACCARD_BOTH_EMPTY_SCORE = 0.5
+    BOTH_EMPTY_SCORE = 0.5
 
     # Score when one side is empty in Jaccard
-    JACCARD_ONE_SIDE_EMPTY_SCORE = 0.0
+    ONE_SIDE_EMPTY_SCORE = 0.0
 
     # Score when reconstructed strings (LCS/Levenshtein) are empty
     RECONSTRUCTION_EMPTY_SCORE = 0.0
