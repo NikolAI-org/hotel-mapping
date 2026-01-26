@@ -7,7 +7,7 @@ from pyspark.sql.types import StringType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_udf
-
+from hotel_data.config.scoring_config import ScoringConstants
 
 def _make_dynamic_cleaner(address_count: int):
     """
@@ -53,8 +53,16 @@ def _make_dynamic_cleaner(address_count: int):
         # collapse multiple spaces into one and trim
         s = re.sub(r"\s+", " ", s).strip()
 
-        # 3. ULTIMATE SAFETY: If we stripped everything, revert to original
+        # 1. ULTIMATE SAFETY: If we stripped everything, revert to original
         if len(s) == 0 and len(original_s) > 0:
+            return original_s
+
+        # 2. If the result consists ONLY of Low Info Terms (e.g., "Hotel", "Residency"),
+        # it means we stripped the distinguishing location name.
+        # Example: "Hotel Colaba" -> stripped "Colaba" -> "Hotel".
+        # Action: Revert to original. "Hotel Colaba" is better than "Hotel".
+        tokens = s.lower().split()
+        if tokens and all(t in ScoringConstants.LOW_INFO_TERMS for t in tokens):
             return original_s
 
         return s

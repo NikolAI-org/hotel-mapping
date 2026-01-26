@@ -38,6 +38,34 @@ class ScoringConstants:
 
     MIN_CHARS_MISSING_SCORE = 0
 
+    # Weight for generic terms (e.g., "Hotel", "Residency")
+    # A match on these contributes only 20% to the information score.
+    LOW_INFO_WEIGHT = 0.2
+    # The set of words considered "Low Information"
+    LOW_INFO_TERMS = {
+        # Accommodation Types (moved from STOP_WORDS)
+        'hotel', 'hotels', 'inn', 'lodge', 'motel', 'resort', 'spa', 'hostal',
+        'guesthouse', 'guest', 'house', 'casa', 'auberge', 'apart-hotel', 'apartment',
+        'suites', 'suite', 'executive', 'residences', 'residency', 'b&b', 'bed and breakfast', 'hostel',
+        'villa', 'cottage', 'home', 'club', 'dormitory', 'annex',
+
+        # Locations/Features (Generic)
+        'city', 'town', 'village', 'metropolitan', 'airport', 'beach',
+        'waterfront', 'harbor', 'view', 'views', 'vista', 'garden', 'gardens',
+        'park', 'plaza', 'square', 'terrace', 'court', 'quarters',
+
+        # Generic Adjectives (These distinguish slightly, but are weak)
+        'grand', 'royal', 'king', 'queen', 'palace', 'imperial', 'crown',
+        'premier', 'prestige', 'deluxe', 'luxury', 'superior', 'exclusive',
+        'small', 'boutique', 'extended stay', 'budget', 'microtel',
+        'old', 'new', 'historic', 'vintage', 'modern', 'comfort', 'international', 'regency'
+    }
+
+    # Weight for unique terms (e.g., "Taj", "Marriott", "Amar")
+    # A match on these contributes 100%.
+    HIGH_INFO_WEIGHT = 1.0
+
+
 
 class ComparisonOperator(str, Enum):
     """Valid comparison operators for signals"""

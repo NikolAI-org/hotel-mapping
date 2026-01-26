@@ -219,8 +219,26 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
             ).cast("float")
         )
 
+        # We take the mean of Jaccard, LCS, Levenshtein, and SBERT
+        df_with_averages = sbert_penalized.withColumn(
+            "average_name_score",
+            (
+                    F.col("name_score_jaccard") +
+                    F.col("name_score_lcs") +
+                    F.col("name_score_levenshtein") +
+                    F.col("name_score_sbert")
+            ) / 4.0
+        ).withColumn(
+            "average_normalized_name_score",
+            (
+                    F.col("normalized_name_score_jaccard") +
+                    F.col("normalized_name_score_lcs") +
+                    F.col("normalized_name_score_levenshtein") +
+                    F.col("normalized_name_score_sbert")
+            ) / 4.0
+        )
         # Clean up temporary columns
-        df_final = sbert_penalized.drop("raw_sbert_score", "raw_norm_sbert_score")
+        df_final = df_with_averages.drop("raw_sbert_score", "raw_norm_sbert_score")
 
         # Handle cases where embedding might be null (fill with 0.0)
         sbert = df_final.fillna(0.0, subset=["name_score_sbert"])

@@ -13,15 +13,15 @@ STOP_PHRASES = [
 # Common stop words/terms often found in hotel names and addresses
 # Kept in LOWERCASE to match tokenization logic
 STOP_WORDS = {
-    'hotel', 'inn', 'lodge', 'motel', 'resort', 'spa', 'hostal', 'guesthouse', 'casa', 'auberge',
-    'apart-hotel', 'suites', 'executive suites', 'residences', 'b&b', 'bed and breakfast', 'hostel', 'at',
-    'near', 'by', 'the', 'on', 'of', 'in', 'next to', 'close to', 'opposite', 'near to', 'located at',
-    'located in', 'east', 'west', 'north', 'south', 'central', 'downtown', 'city', 'town', 'village',
-    'metropolitan', 'airport', 'beach', 'waterfront', 'harbor', 'view', 'views', 'vista', 'garden',
-    'gardens', 'park', 'plaza', 'square', 'terrace', 'court', 'quarters', 'grand', 'royal', 'king',
-    'queen', 'palace', 'imperial', 'crown', 'premier', 'prestige', 'deluxe', 'luxury', 'superior',
-    'exclusive', 'small', 'boutique', 'extended stay', 'budget', 'microtel', 'old', 'new', 'historic',
-    'vintage', 'modern', 'a', 'an', 'and', 'for', 'with', 'to', 'or', 'via', 'from', 'is', 'just', 'plus',
-    'el', 'la', 'los', 'las', 'del', 'de', 'y', 'le', 'les', 'du', 'des', 'et', 'chez', 'der', 'die',
-    'das', 'und', 'il', 'i', 'gli', 'e', 'di'
+    # Prepositions & Articles (TRASH)
+    'at', 'by', 'the', 'on', 'of', 'in', 'to', 'from', 'for', 'with', 'and', 'or', 'via', 'is', 'just', 'plus',
+    'a', 'an', 'as',
+    'near', 'next to', 'close to', 'opposite', 'near to', 'located at', 'located in',
+
+    # Directions (Usually Noise in loose matching, but debatable. Safer to remove)
+    'east', 'west', 'north', 'south', 'central', 'downtown',
+
+    # Foreign Articles
+    'el', 'la', 'los', 'las', 'del', 'de', 'y', 'le', 'les', 'du', 'des', 'et', 'chez',
+    'der', 'die', 'das', 'und', 'il', 'i', 'gli', 'e', 'di'
 }

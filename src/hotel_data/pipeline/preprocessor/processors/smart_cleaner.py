@@ -1,13 +1,14 @@
 from pyspark.sql.functions import udf, col
 from pyspark.sql.types import StringType
 import re
+from hotel_data.config.scoring_config import ScoringConstants
 
 # Words that indicate the core entity type. We should STOP stripping if we hit these.
-STRUCTURE_WORDS = {
-    'hotel', 'inn', 'resort', 'motel', 'suites', 'suite', 'apartments', 'villas',
-    'lodge', 'hostel', 'residency', 'palace', 'plaza', 'square', 'grand', 'royal',
-    'stay', 'house', 'home', 'club', 'cottage', 'camp'
-}
+#STRUCTURE_WORDS = {
+#    'hotel', 'inn', 'resort', 'motel', 'suites', 'suite', 'apartments', 'villas',
+#    'lodge', 'hostel', 'residency', 'palace', 'plaza', 'square', 'grand', 'royal',
+#    'stay', 'house', 'home', 'club', 'cottage', 'camp'
+#}
 
 
 def smart_suffix_remover(name, address_line):
@@ -32,7 +33,7 @@ def smart_suffix_remover(name, address_line):
 
         # SAFETY 2: Stop if we hit a Structure Word (e.g. "Hotel")
         # This protects "Orchid Hotel" from becoming "Orchid" even if "Hotel" is in address
-        if token in STRUCTURE_WORDS:
+        if token in ScoringConstants.LOW_INFO_TERMS:
             break
 
         # ACTION: If token is in address, we mark it for removal
