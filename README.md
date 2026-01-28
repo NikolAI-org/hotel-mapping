@@ -32,6 +32,96 @@
     ```
     poetry run pytest tests/unit/test_orchestrator.py -v
     ```
+# 🧩 String Matching Algorithms Explained
+We use a hybrid approach combining four distinct algorithms to capture different types of similarity (typos, subsets, reordering, etc.).
+
+1. Jaccard Similarity (The "Bag of Words" Matcher)
+   ```
+   Best for: Handling out-of-order words (e.g., "Grand Hotel Mumbai" vs "Mumbai Grand Hotel").
+
+   Logic: Treats strings as unordered sets of words. It ignores word sequence entirely.
+
+    Formula:  
+    ∣A∪B∣
+    ∣A∩B∣
+    ​
+     
+    
+    Example:
+    
+    Name A: Hotel Royal → {hotel, royal}
+    
+    Name B: Royal Hotel Palace → {royal, hotel, palace}
+    
+    Intersection: 2 (royal, hotel)
+    
+    Union: 3 (royal, hotel, palace)
+    
+    Score: 2/3≈0.67
+
+
+2. Containment Score (The "Subset" Matcher)
+    
+```
+    Best for: Detecting when one name is a perfect subset of another (e.g., "Hilton" inside "Hilton Garden Inn").
+    Logic: Similar to Jaccard, but checks if the smaller set is fully contained in the larger set. It ignores the "extra" words in the longer name.
+    
+    Formula: ∣A∩B∣/min(|A|,|B|)
+    Example:
+        Name A: Hotel Royal (Length 2)
+        Name B: Royal Hotel Palace (Length 3)
+        Intersection: 2
+        Min Length: 2
+        Score: 2 / 2 = 1.0 (Perfect Match)
+```
+
+3. Longest Common Substring (LCS) (The "Structure" Matcher)
+
+```
+    Best for: Catching typos or slight variations where the sequence matters (e.g., "Radisson" vs "Radison").
+    Logic: Finds the longest continuous sequence of characters shared by both strings. It penalizes gaps or scrambled words.
+    Formula: Length of LCS/Length of Longest String
+    Example:
+        Name A: Radisson Blu
+        Name B: Radisson Blue
+        LCS: Radisson Blu (Length 12)
+        Max Length: 13 (Radisson Blue)
+        Score: 12 / 13 = 0.92
+        
+```
+
+4. Levenshtein Distance (The "Edit" Matcher)
+
+```commandline
+Best for: General fuzzy matching, handling typos, missing characters, and slight reordering.
+
+Logic: Calculates the minimum number of single-character edits (insertions, deletions, substitutions) required to change one string into the other. We use a weighted blend of:
+
+Ratio: Strict character-by-character match.
+
+Partial Ratio: checks if the shorter string is a substring of the longer one.
+
+Token Sort: Sorts words alphabetically before comparing (handles reordering).
+
+Token Set: Compares intersection of tokens (handles repetition).
+
+Example:
+
+Name A: Hyatt
+
+Name B: Hyatt Regency
+
+Score: High partial ratio (1.0), lower strict ratio.
+```
+
+```commandline
+Scenario	Name A	                Name B	Best        Algorithm	        Why?
+Reordering	Taj Palace	        Palace Taj	    Jaccard	        Words are same, just moved.
+Subset	        Hilton	                Hilton London	    Containment	        "Hilton" is fully inside.
+Typos	        Marriot	                Marriott	    LCS / Levenshtein   Sequence is mostly intact.
+Middle Word	Grand Hotel	        Grand Hyatt Hotel   Containment	        "Grand" and "Hotel" are both present.
+```
+
 # Hotel Pairs Column details
     ```
         

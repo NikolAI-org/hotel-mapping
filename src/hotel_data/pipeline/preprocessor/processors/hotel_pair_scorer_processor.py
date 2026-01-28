@@ -9,7 +9,7 @@ from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
     enhanced_name_scorer,
     get_numeric_penalty,
-    JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO
+    JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO, CONTAINMENT_ALGO
 )
 from hotel_data.config.scoring_config import ScoringConstants
 from hotel_data.pipeline.preprocessor.utils.phone_number_utils import normalize_phone_expr, arrays_overlap_check
@@ -118,9 +118,23 @@ class HotelPairScorerProcessor(BaseProcessor[DataFrame]):
         )
 
         pairs_filtered = pairs_with_distance.filter(F.col("geo_distance_km") <= 0.5)
-
         name_udf = F.udf(enhanced_name_scorer, "float")
-        jaccard_lcs_levenshtein = pairs_filtered.withColumn(
+
+        containment = pairs_filtered.withColumn(
+            "name_score_containment",
+            name_udf(
+                F.col("name_i"), F.col("name_j"),
+                F.lit(CONTAINMENT_ALGO), F.lit(False)
+            )
+        ).withColumn(
+            "normalized_name_score_containment",
+            name_udf(
+                F.col("normalized_name_i"), F.col("normalized_name_j"),
+                F.lit(CONTAINMENT_ALGO), F.lit(True)
+            )
+        )
+
+        jaccard_lcs_levenshtein = containment.withColumn(
             "name_score_jaccard",
             name_udf(
                 F.col("name_i"),

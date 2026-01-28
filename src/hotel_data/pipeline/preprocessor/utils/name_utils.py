@@ -6,6 +6,7 @@ from hotel_data.config.scoring_config import ScoringConstants
 JACCARD_ALGO = "jaccard"
 LCS_ALGO = "lcs"
 LEVENSHTEIN_ALGO = "levenshtein"
+CONTAINMENT_ALGO = "containment"
 
 
 def get_numeric_penalty(s1: str, s2: str) -> float:
@@ -81,10 +82,11 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
 
     final_score = 0.0
 
+    set1 = set(tokens_jaccard_1)
+    set2 = set(tokens_jaccard_2)
+
     # --- 1. Jaccard Calculation (Uses Sets) ---
     if algo == JACCARD_ALGO:
-        set1 = set(tokens_jaccard_1)
-        set2 = set(tokens_jaccard_2)
         if not set1 and not set2:
             final_score = ScoringConstants.BOTH_EMPTY_SCORE #0.5
         elif not set1 or not set2:
@@ -93,6 +95,17 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
             final_score = intersection / union if union > 0 else 0.0
+
+    elif algo == CONTAINMENT_ALGO:
+        if not set1 and not set2:
+            final_score = ScoringConstants.BOTH_EMPTY_SCORE
+        elif not set1 or not set2:
+            final_score = ScoringConstants.ONE_SIDE_EMPTY_SCORE
+        else:
+            intersection = len(set1.intersection(set2))
+            # Key difference: Divide by MIN length, not UNION
+            min_len = min(len(set1), len(set2))
+            final_score = intersection / min_len if min_len > 0 else 0.0
 
     # --- 2. String Reconstruction (Uses ORDERED Tokens) ---
     elif algo == LCS_ALGO:
