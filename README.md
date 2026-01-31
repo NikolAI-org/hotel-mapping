@@ -1,460 +1,374 @@
-## Project Setup
-1. Run below command
-    ```
-    poetry install
-    ```
-    Note: Python path can be found out using below command,
-    ```
-    poetry env info --path
-    ```
-2. Additional Dependecies,
-    ```
-    poetry add pyspark==4.0.1
-    rm -rf ~/.ivy2 ~/.cache/pyspark
-    ```
-3. Run the program
-    ```
-    poetry run python -m hotel_data.pipeline.preprocessor.preprocessing_pipeline
+# Delta Lake Data Pipeline with Airflow & Spark
 
-    poetry run python -m hotel_data.delta.table_ops
+A production-grade data pipeline leveraging **Apache Airflow**, **Apache Spark**, **Delta Lake**, and **MinIO** for robust data processing and storage.
 
-    poetry run python -m hotel_data.delta.table_ops_spark_sql
-    ```
-    Note: Disable the pycache
-    ```
-    export PYTHONDONTWRITEBYTECODE=1
-    OR
-    PYTHONDONTWRITEBYTECODE=1 poetry run python -m hotel_data.pipeline.preprocessor.preprocessing_pipeline
-    OR
-    find . -type d -name "__pycache__" -exec rm -r {} +
-    ```
-4. Run the test cases
-    ```
-    poetry run pytest tests/unit/test_orchestrator.py -v
-    ```
-# 🧩 String Matching Algorithms Explained
-We use a hybrid approach combining four distinct algorithms to capture different types of similarity (typos, subsets, reordering, etc.).
+## 🏗️ Architecture Overview
 
-1. Jaccard Similarity (The "Bag of Words" Matcher)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Apache Airflow                                │
+│  ┌──────────────┐  ┌───────────┐  ┌────────────┐               │
+│  │  Webserver   │  │ Scheduler │  │   Worker   │               │
+│  └──────────────┘  └───────────┘  └────────────┘               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Apache Spark Cluster                          │
+│  ┌──────────────┐              ┌────────────────┐              │
+│  │    Master    │◄────────────►│     Worker     │              │
+│  └──────────────┘              └────────────────┘              │
+│        (Delta Lake Configured)                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MinIO (S3-Compatible)                         │
+│  Buckets: data-lake, delta-lake                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## 📋 Components
+
+### Core Services
+- **Airflow**: Orchestration (Webserver, Scheduler, Worker, Postgres, Redis)
+- **Spark**: Processing (1 Master, 1 Worker) using Bitnami images
+- **MinIO**: S3-compatible object storage
+- **PostgreSQL**: Airflow metadata database
+- **Redis**: Celery message broker
+
+### Key Features
+- ✅ Delta Lake integration with Spark
+- ✅ S3A filesystem for MinIO access
+- ✅ ACID transactions
+- ✅ Time-travel queries
+- ✅ MERGE/Upsert operations
+- ✅ Schema evolution
+- ✅ Data versioning
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker & Docker Compose
+- At least 4GB RAM available
+- 10GB free disk space
+
+### Setup Instructions
+
+1. **Clone/Navigate to the project directory**
+```bash
+cd hotel-mapping-airflow
+```
+
+2. **Configure environment variables**
+```bash
+# The .env file is already created with default values
+# Modify if needed:
+# - AWS_ACCESS_KEY (default: minioadmin)
+# - AWS_SECRET_KEY (default: minioadmin)
+# - MINIO_ENDPOINT (default: http://minio:9000)
+```
+
+3. **Set proper permissions (Linux/Mac)**
+```bash
+mkdir -p ./logs ./plugins
+echo -e "AIRFLOW_UID=$(id -u)" >> .env
+```
+
+4. **Start all services**
+```bash
+docker-compose up -d
+```
+
+5. **Wait for services to be healthy** (takes ~2-3 minutes)
+```bash
+docker-compose ps
+```
+
+6. **Access the services**
+- **Airflow UI**: http://localhost:8080 (Username: `airflow`, Password: `airflow`)
+- **Spark Master UI**: http://localhost:8081
+- **MinIO Console**: http://localhost:9001 (Username: `minioadmin`, Password: `minioadmin`)
+
+## 📂 Project Structure
+
+```
+hotel-mapping-airflow/
+├── docker-compose.yaml          # Main orchestration file
+├── Dockerfile                   # Custom Airflow image with dependencies
+├── .env                         # Environment configuration
+├── .env.example                 # Example environment file
+├── dags/                        # Airflow DAGs
+│   ├── 01_data_ingestion_dag.py          # Data ingestion to MinIO
+│   └── 02_delta_transformation_dag.py    # Delta Lake transformations
+├── spark/
+│   ├── conf/
+│   │   └── spark-defaults.conf  # Spark configuration for Delta Lake
+│   └── jobs/                    # Spark job scripts
+│       ├── delta_transform.py   # Initial Delta transformation
+│       ├── delta_merge.py       # MERGE/Upsert operations
+│       └── delta_time_travel.py # Time-travel queries
+├── config/                      # Additional configurations
+├── logs/                        # Airflow logs
+├── plugins/                     # Airflow plugins
+└── data/                        # Local data directory
+```
+
+## 🔧 Configuration Details
+
+### Spark Configuration (spark-defaults.conf)
+
+The Spark cluster is pre-configured with:
+
+```properties
+# Delta Lake Extensions
+spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+
+# S3A Configuration for MinIO
+spark.hadoop.fs.s3a.endpoint=http://minio:9000
+spark.hadoop.fs.s3a.access.key=minioadmin
+spark.hadoop.fs.s3a.secret.key=minioadmin
+spark.hadoop.fs.s3a.path.style.access=true
+spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+spark.hadoop.fs.s3a.connection.ssl.enabled=false
+```
+
+### Delta Lake Packages
+
+```
+io.delta:delta-core_2.12:2.4.0
+org.apache.hadoop:hadoop-aws:3.3.4
+```
+
+## 📊 Sample DAGs
+
+### DAG 1: Data Ingestion (`hotel_data_ingestion`)
+
+**Purpose**: Generate sample hotel booking data and upload to MinIO
+
+**Tasks**:
+1. `generate_data`: Creates 1000 sample hotel booking records
+2. `upload_to_minio`: Uploads CSV and JSON to MinIO bucket
+
+**Schedule**: Daily (`@daily`)
+
+**Output**: `s3a://data-lake/raw/hotel_bookings/`
+
+### DAG 2: Delta Transformation (`hotel_delta_transformation`)
+
+**Purpose**: Transform raw data to Delta Lake format and demonstrate Delta capabilities
+
+**Tasks**:
+1. `transform_to_delta`: Read CSV, apply transformations, write to Delta format
+2. `delta_merge_operations`: Perform MERGE/Upsert operations
+3. `delta_time_travel`: Execute time-travel queries across versions
+4. `log_completion`: Log completion status
+
+**Schedule**: Daily (`@daily`)
+
+**Output**: `s3a://delta-lake/hotel_bookings/`
+
+**Delta Features Demonstrated**:
+- Schema enforcement
+- ACID transactions
+- Version control
+- Time-travel queries (versionAsOf, timestampAsOf)
+- MERGE INTO operations
+- Aggregations and analytics
+
+## 🎯 Usage Examples
+
+### Running the Pipeline
+
+1. **Trigger Data Ingestion DAG**
+   - Navigate to Airflow UI → DAGs → `hotel_data_ingestion`
+   - Click "Trigger DAG" button
+   - Wait for completion (~1-2 minutes)
+
+2. **Trigger Delta Transformation DAG**
+   - Navigate to Airflow UI → DAGs → `hotel_delta_transformation`
+   - Click "Trigger DAG" button
+   - Monitor execution in Spark UI (http://localhost:8081)
+
+### Accessing Data in MinIO
+
+```python
+# Using boto3/minio client
+from minio import Minio
+
+client = Minio(
+    "localhost:9000",
+    access_key="minioadmin",
+    secret_key="minioadmin",
+    secure=False
+)
+
+# List objects in data-lake bucket
+objects = client.list_objects("data-lake", recursive=True)
+for obj in objects:
+    print(obj.object_name)
+```
+
+### Querying Delta Tables
+
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder \
+    .appName("Query Delta") \
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+    .getOrCreate()
+
+# Read latest version
+df = spark.read.format("delta").load("s3a://delta-lake/hotel_bookings/")
+df.show()
+
+# Time-travel to version 0
+df_v0 = spark.read.format("delta").option("versionAsOf", 0).load("s3a://delta-lake/hotel_bookings/")
+df_v0.show()
+```
+
+## 🔍 Monitoring & Troubleshooting
+
+### View Service Logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f airflow-webserver
+docker-compose logs -f spark-master
+docker-compose logs -f minio
+```
+
+### Check Service Health
+
+```bash
+docker-compose ps
+```
+
+### Access Airflow CLI
+
+```bash
+docker-compose run --rm airflow-cli bash
+```
+
+### Spark Job Monitoring
+- Spark Master UI: http://localhost:8081
+- View running/completed applications
+- Check executor logs and metrics
+
+### Common Issues
+
+1. **Permission Denied Errors**
+   ```bash
+   # Fix ownership
+   sudo chown -R $(id -u):$(id -g) ./logs ./plugins
    ```
-   Best for: Handling out-of-order words (e.g., "Grand Hotel Mumbai" vs "Mumbai Grand Hotel").
 
-   Logic: Treats strings as unordered sets of words. It ignores word sequence entirely.
+2. **MinIO Connection Issues**
+   - Ensure MinIO is healthy: `docker-compose ps minio`
+   - Check endpoint configuration in .env file
+   - Verify bucket exists: Access MinIO Console
 
-    Formula:  
-    ∣A∪B∣
-    ∣A∩B∣
-    ​
-     
-    
-    Example:
-    
-    Name A: Hotel Royal → {hotel, royal}
-    
-    Name B: Royal Hotel Palace → {royal, hotel, palace}
-    
-    Intersection: 2 (royal, hotel)
-    
-    Union: 3 (royal, hotel, palace)
-    
-    Score: 2/3≈0.67
+3. **Spark Job Failures**
+   - Check Spark Master logs: `docker-compose logs spark-master`
+   - Verify Delta Lake packages are loaded
+   - Ensure S3A configuration is correct
 
+## 🛠️ Customization
 
-2. Containment Score (The "Subset" Matcher)
-    
-```
-    Best for: Detecting when one name is a perfect subset of another (e.g., "Hilton" inside "Hilton Garden Inn").
-    Logic: Similar to Jaccard, but checks if the smaller set is fully contained in the larger set. It ignores the "extra" words in the longer name.
-    
-    Formula: ∣A∩B∣/min(|A|,|B|)
-    Example:
-        Name A: Hotel Royal (Length 2)
-        Name B: Royal Hotel Palace (Length 3)
-        Intersection: 2
-        Min Length: 2
-        Score: 2 / 2 = 1.0 (Perfect Match)
+### Adding New DAGs
+
+1. Create a new Python file in `dags/` directory
+2. Define your DAG with proper operators
+3. Airflow will auto-detect it within 30 seconds
+
+### Modifying Spark Configuration
+
+Edit `spark/conf/spark-defaults.conf` and restart Spark services:
+
+```bash
+docker-compose restart spark-master spark-worker
 ```
 
-3. Longest Common Substring (LCS) (The "Structure" Matcher)
+### Scaling Workers
 
-```
-    Best for: Catching typos or slight variations where the sequence matters (e.g., "Radisson" vs "Radison").
-    Logic: Finds the longest continuous sequence of characters shared by both strings. It penalizes gaps or scrambled words.
-    Formula: Length of LCS/Length of Longest String
-    Example:
-        Name A: Radisson Blu
-        Name B: Radisson Blue
-        LCS: Radisson Blu (Length 12)
-        Max Length: 13 (Radisson Blue)
-        Score: 12 / 13 = 0.92
-        
+Modify `docker-compose.yaml` to add more Spark workers:
+
+```yaml
+spark-worker-2:
+  image: bitnami/spark:3.5.0
+  environment:
+    - SPARK_MODE=worker
+    - SPARK_MASTER_URL=spark://spark-master:7077
+    # ... same config as spark-worker
 ```
 
-4. Levenshtein Distance (The "Edit" Matcher)
+## 📈 Performance Tuning
 
-```commandline
-Best for: General fuzzy matching, handling typos, missing characters, and slight reordering.
+### Spark Memory Configuration
 
-Logic: Calculates the minimum number of single-character edits (insertions, deletions, substitutions) required to change one string into the other. We use a weighted blend of:
+Adjust in `spark/conf/spark-defaults.conf`:
 
-Ratio: Strict character-by-character match.
-
-Partial Ratio: checks if the shorter string is a substring of the longer one.
-
-Token Sort: Sorts words alphabetically before comparing (handles reordering).
-
-Token Set: Compares intersection of tokens (handles repetition).
-
-Example:
-
-Name A: Hyatt
-
-Name B: Hyatt Regency
-
-Score: High partial ratio (1.0), lower strict ratio.
+```properties
+spark.driver.memory=2g
+spark.executor.memory=4g
+spark.executor.cores=4
 ```
 
-```commandline
-Scenario	Name A	                Name B	Best        Algorithm	        Why?
-Reordering	Taj Palace	        Palace Taj	    Jaccard	        Words are same, just moved.
-Subset	        Hilton	                Hilton London	    Containment	        "Hilton" is fully inside.
-Typos	        Marriot	                Marriott	    LCS / Levenshtein   Sequence is mostly intact.
-Middle Word	Grand Hotel	        Grand Hyatt Hotel   Containment	        "Grand" and "Hotel" are both present.
+### Airflow Concurrency
+
+Modify `docker-compose.yaml`:
+
+```yaml
+AIRFLOW__CORE__PARALLELISM: 32
+AIRFLOW__CORE__DAG_CONCURRENCY: 16
+AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: 16
 ```
 
-# Hotel Pairs Column details
-    ```
-        
-| Column name                       | Description                                        |
-|-----------------------------------|----------------------------------------------------|
-| id                                | vervotec id                                        |
-| providerHotelId                   | provider Hotel Id                                  |
-| name                              | hotel name                                         |
-| normalized_name                   | normalized hotel name                              |
-| geo_distance_km                   | geo distance km btw pair                           |
-| name_score_jaccard_lcs            | hotel name score using jaccard_lcs algo            |
-| normalized_name_score_jaccard_lcs | hotel normalized name score using jaccard_lcs algo |
-| name_score_sbert                  | hotel name score using sbert algo                  |
-| normalized_name_score_sbert       | hotel normalized name score using sbert algo       |
-| star_ratings_score                | hotel star ratings score                           |
-| address_line1_score               | hotel address line1 score                          |
-| address_sbert_score               | hotel address line1 score using sbert              |
-| postal_code_match                 | postal code match score                            |
-| country_match                     | country name match                                 |
-| phone match score                 | last 10 phone number match score                   |
-| email_match_score                 |  email_match_score                                 |
-| fax_match_score                   |   |
+## 🔒 Security Considerations
 
+**⚠️ This setup is for development/testing. For production:**
 
-    ```
-# Match Logic Configuration Guide
-1. The Building Blocks
-A. The Signal (Leaf)
-```
-- signal: <column_name>
-  threshold: <float_value>   # Value between -1.0 and 1.0
-  comparator: <op>           # Optional. Default: gte (>=)
-```
-Valid Comparators: gte (>=), lte (<=), gt (>), lt (<)
-B. The Logic Group (Node)
-A group combines multiple rules using a logical operator.
-```
-- operator: <AND|OR>
-  rules:
-    - ... (list of other Signals or Groups)
-```
-2. Configuration Structure
-The configuration file must contain a root match_logic block.
-```
-scoring:
-  match_logic:
-    operator: AND   # The Root is usually an 'AND' group
-    rules:
-      # ... your rules go here
-```
-3. Examples
-Example 1: Simple Logic
-Requirement: "Must be within 0.5km AND have a name score >= 0.8"
-```
-match_logic:
-  operator: AND
-  rules:
-    - signal: geo_distance_km
-      threshold: 0.5
-      comparator: lte
-    - signal: name_score_jaccard
-      threshold: 0.8
-      comparator: gte
-```
-Example 2: Complex Nested Logic (The "Hotel Match" Standard)
-Requirement:
-Geo: Must be within 0.5km.
-Name: Must match strongly on any single metric OR match moderately on composite metrics.
-Validation: Must match Address OR Phone OR Email.
-```
-match_logic:
-  operator: AND
-  rules:
-    # --- 1. MANDATORY GEO FILTER ---
-    - signal: geo_distance_km
-      threshold: 0.5
-      comparator: lte
+1. Change default credentials in `.env`
+2. Enable SSL/TLS for all services
+3. Use proper authentication mechanisms
+4. Implement network isolation
+5. Enable Airflow RBAC
+6. Use secrets management (Vault, AWS Secrets Manager)
 
-    # --- 2. NAME MATCHING (Nested OR) ---
-    - operator: OR
-      rules:
-        # A. Strong Single Matches
-        - signal: name_score_jaccard
-          threshold: 0.9
-        - signal: name_score_levenshtein
-          threshold: 0.9
-        
-        # B. Composite Weak Matches (AND inside OR)
-        - operator: AND
-          rules:
-            - signal: name_score_jaccard
-              threshold: 0.75
-            - signal: normalized_name_score_jaccard
-              threshold: 0.9
+## 📚 Additional Resources
 
-    # --- 3. SECONDARY VALIDATION (At least one must match) ---
-    - operator: OR
-      rules:
-        - signal: address_line1_score
-          threshold: 0.2
-        - signal: phone_match_score
-          threshold: 0.5
-        - signal: email_match_score
-          threshold: 0.5
+- [Delta Lake Documentation](https://docs.delta.io/)
+- [Apache Airflow Documentation](https://airflow.apache.org/docs/)
+- [Apache Spark Documentation](https://spark.apache.org/docs/latest/)
+- [MinIO Documentation](https://min.io/docs/)
+
+## 🧹 Cleanup
+
+```bash
+# Stop all services
+docker-compose down
+
+# Remove volumes (deletes all data)
+docker-compose down -v
+
+# Remove images
+docker-compose down --rmi all
 ```
 
-# Clustering
-- Pipelines for executing the cluster logic
-```
-Create actual cluster: poetry run python -m hotel_data.pipeline.clustering.hotel_clustering_pipeline
-Generate the insights: poetry run python -m hotel_data.pipeline.clustering.pairing_insights_pipeline
-```    
-- 06_final_clusters schema
-+----------------------------+-------------+-------+
-|col_name                    |data_type    |comment|
-+----------------------------+-------------+-------+
-|name                        |string       |NULL   |
-|id                          |string       |NULL   |
-|normalized_name             |string       |NULL   |
-|relevanceScore              |string       |NULL   |
-|providerId                  |string       |NULL   |
-|providerHotelId             |string       |NULL   |
-|providerName                |string       |NULL   |
-|language                    |string       |NULL   |
-|geoCode_lat                 |string       |NULL   |
-|geoCode_long                |string       |NULL   |
-|geohash                     |array<string>|NULL   |
-|contact_address_line1       |string       |NULL   |
-|contact_address_city_name   |string       |NULL   |
-|contact_address_state_name  |string       |NULL   |
-|contact_address_country_code|string       |NULL   |
-|contact_address_country_name|string       |NULL   |
-|contact_address_postalCode  |string       |NULL   |
-|name_embedding              |array<float> |NULL   |
-|normalized_name_embedding   |array<float> |NULL   |
-|contact_phones              |array<string>|NULL   |
-|contact_fax                 |array<string>|NULL   |
-|contact_emails              |array<string>|NULL   |
-|type                        |string       |NULL   |
-|category                    |string       |NULL   |
-|starRating                  |string       |NULL   |
-|distance                    |string       |NULL   |
-|attributes                  |array<string>|NULL   |
-|imageCount                  |string       |NULL   |
-|availableSuppliers          |array<string>|NULL   |
-|combined_address            |string       |NULL   |
-|address_embedding           |array<float> |NULL   |
-|processing_time_utc         |timestamp    |NULL   |
-|original_message            |string       |NULL   |
-|cluster_id                  |string       |NULL   |
-+----------------------------+-------------+-------+
-- Intermediate data for scoring comparison. scoring_metadata column will have details comparison
-+----------------------------------------+---------+-------+
-|col_name                                |data_type|comment|
-+----------------------------------------+---------+-------+
-|id_i                                    |string   |NULL   |
-|id_j                                    |string   |NULL   |
-|providerHotelId_i                       |string   |NULL   |
-|providerHotelId_j                       |string   |NULL   |
-|name_i                                  |string   |NULL   |
-|name_j                                  |string   |NULL   |
-|normalized_name_i                       |string   |NULL   |
-|normalized_name_j                       |string   |NULL   |
-|geo_distance_km                         |double   |NULL   |
-|name_score_jaccard_lcs                  |float    |NULL   |
-|normalized_name_score_jaccard_lcs       |float    |NULL   |
-|name_score_sbert                        |float    |NULL   |
-|normalized_name_score_sbert             |float    |NULL   |
-|star_ratings_score                      |float    |NULL   |
-|address_line1_score                     |float    |NULL   |
-|postal_code_match                       |float    |NULL   |
-|country_match                           |float    |NULL   |
-|address_sbert_score                     |float    |NULL   |
-|phone_match_score                       |float    |NULL   |
-|email_match_score                       |float    |NULL   |
-|fax_match_score                         |float    |NULL   |
-|geo_distance_km_passed                  |boolean  |NULL   |
-|name_score_jaccard_lcs_passed           |boolean  |NULL   |
-|normalized_name_score_jaccard_lcs_passed|boolean  |NULL   |
-|name_score_sbert_passed                 |boolean  |NULL   |
-|normalized_name_score_sbert_passed      |boolean  |NULL   |
-|star_ratings_score_passed               |boolean  |NULL   |
-|address_line1_score_passed              |boolean  |NULL   |
-|postal_code_match_passed                |boolean  |NULL   |
-|country_match_passed                    |boolean  |NULL   |
-|address_sbert_score_passed              |boolean  |NULL   |
-|phone_match_score_passed                |boolean  |NULL   |
-|email_match_score_passed                |boolean  |NULL   |
-|fax_match_score_passed                  |boolean  |NULL   |
-|scoring_metadata                        |string   |NULL   |
-|is_matched                              |boolean  |NULL   |
-|match_status                            |string   |NULL   |
-|match_score                             |double   |NULL   |
-|scoring_version                         |string   |NULL   |
-|scoring_timestamp                       |timestamp|NULL   |
-+----------------------------------------+---------+-------+
-- Clustering can be done using two algorithm: unionfind, labelpropagation
+## 📝 License
 
+This project is provided as-is for educational and development purposes.
 
-# PySpark Shell
-- Run the program
-```
-poetry run python -m hotel_data.delta.spark_shell
-```
-- Create temporary view of the table per session
-```
-spark.sql("CREATE OR REPLACE TEMP VIEW b_hotels USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/hotels')")
+## 🤝 Contributing
 
-spark.sql("CREATE OR REPLACE TEMP VIEW b_hotel_pairs USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/hotel_pairs')")
+Feel free to submit issues, fork the repository, and create pull requests for any improvements.
 
-spark.sql("CREATE OR REPLACE TEMP VIEW b_scored_pairs USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/02_scored_pairs')")
+---
 
-spark.sql("CREATE OR REPLACE TEMP VIEW b_final_clusters USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/06_final_clusters')")
-
-spark.sql("CREATE OR REPLACE TEMP VIEW b_insights USING delta OPTIONS (path 's3a://delta-bucket/hotel_data/delta/bronze/final_cluster_insights')")
-```
-- Query the table
-```
-spark.sql("select * from b_hotels limit 1").show()
-```
-- Clear the screen
-```
-import os
-os.system("clear")
-```
-
-
-# Minikube Setup
-* Start Minikube
-    ```
-    minikube start --cpus=4 --memory=8192 --driver=docker
-    ```
-* Enable ingress
-    ```
-    minikube addons enable ingress
-    ```
-* Switch context
-    ```
-    kubectl config use-context minikube
-    ```
-* Install Helm
-    ```
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    ```
-* Add Spark Operator Helm repo
-    ```
-    helm repo add spark-operator https://kubeflow.github.io/spark-operator
-
-    helm repo update
-    ```
-# Docker 
-* Prerequisite: Install Docker
-* Docker Setup
-    - Refer Dockerfile
-    - Use minikube docker env or Push the image to registry. Below is command to use minikube docker env.
-    ```
-    eval $(minikube docker-env)
-
-    ```
-    - Run below command where Dockerfile is located.
-    ```
-    docker build -t hotel-preprocess-pipeline:latest .
-    ```
-* Install Spark Operator
-    ```
-    helm install release-v1 spark-operator/spark-operator \
-        --namespace spark-operator \
-        --create-namespace \
-        --set sparkJobNamespace=default \
-        --set webhook.enable=true
-    ```
-    1. Check the pods
-        ```
-        kubectl get pods -n spark-operator
-        ```
-* Uninstall Spark Operator
-    ```
-    helm uninstall spark-operator --namespace spark-operator
-    kubectl delete namespace spark-operator
-    ```
-* Check And Validate the Job
-    ```
-    kubectl get sparkapplication
-    kubectl describe sparkapplication spark-app
-    ```
-
-# MinIO setup
-
-- Install the go using link https://go.dev/doc/install
-- Make sure that Go's bin dir is added in PATH enviornment
-```
-echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-source ~/.bashrc
-```
-- Install MinIO using source,
-```
-go install github.com/minio/minio@latest
-```
-- Verify if MinIO is installed.
-```
-ls ~/go/bin/minio
-which minio
-minio --version
-```
-- If any issues probably its because of the incorrect environment variable
-```
-export GOPATH=$HOME/go
-export PATH=$PATH:$GOPATH/bin
-```
-- Start the MinIO server
-```
-minio server ~/data
-```
-- Default MinIO username/password is 
-```
-   RootUser: minioadmin 
-   RootPass: minioadmin 
-```
-- Install MC tool
-```
-curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
-chmod +x mc
-sudo mv mc /usr/local/bin/
-# Verify the setup
-mc --version
-mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
-mc ls local
-mc admin info local
-mc admin heal local
-```
-
-
-# Markdown View Command (VS Code)
-```
-Ctrl+Shift+V
-```
+**Built with ❤️ for Data Engineering**
