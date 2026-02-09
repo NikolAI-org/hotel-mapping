@@ -10,33 +10,34 @@ Output: s3a://data-lake/mapped_input/{country}/{supplier_name}/
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, explode, current_timestamp, lit,
-    concat_ws, array_join, to_timestamp
+    concat_ws, array_join, to_timestamp, udf, lower, regexp_replace, trim, coalesce, split
 )
 from pyspark.sql.types import (
     StructType, StructField, StringType, DoubleType,
     IntegerType, ArrayType, BooleanType
 )
 import os
+import re
 
 # Get parameters from environment variables (set by DAG)
 country = os.getenv('COUNTRY', 'india')
 supplier_name = os.getenv('SUPPLIER_NAME', 'expedia')
 
-# Create Spark session with S3A configuration for MinIO
-builder = SparkSession.builder \
-    .appName(f"Map JSON to Parquet - {country}/{supplier_name}") \
-    .master("spark://spark-master:7077") \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-    .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
-    .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
-    .config("spark.executor.memory", "1g") \
-    .config("spark.executor.cores", "1") \
-    .config("spark.driver.memory", "1g")
-
-spark = builder.getOrCreate()
+# Get or create SparkSession - will reuse SparkContext from spark-submit
+print("Getting SparkSession...")
+try:
+    # Try to get active session first
+    spark = SparkSession.getActiveSession()
+    if spark is None:
+        # If no active session, create one (will reuse existing SparkContext)
+        spark = SparkSession.builder \
+            .appName(f"MapJSON-{country}-{supplier_name}") \
+            .getOrCreate()
+    print(f"✓ Spark session ready: {spark.version}")
+    print(f"✓ Master: {spark.sparkContext.master}")
+except Exception as e:
+    print(f"Error getting SparkSession: {e}")
+    raise
 
 # Set log level
 spark.sparkContext.setLogLevel("WARN")
@@ -184,18 +185,100 @@ try:
     record_count = df_mapped.count()
     print(f"   ✓ Mapped {record_count} hotel records")
 
+    # Add normalized name column
+    print("\n5. Creating normalized hotel name...")
+
+    # Common hotel industry words to remove
+    common_hotel_words = {
+        'hotel', 'hotels', 'inn', 'inns', 'resort', 'resorts', 'lodge', 'lodges',
+        'motel', 'motels', 'suites', 'suite', 'residences', 'residence', 'hostel',
+        'hostels', 'guest', 'house', 'home', 'homes', 'palace', 'grand', 'royal',
+        'international', 'plaza', 'tower', 'towers', 'center', 'centre', 'comfort',
+        'luxury', 'deluxe', 'premium', 'business', 'boutique', 'heritage', 'classic',
+        'retreat', 'villa', 'villas', 'apartment', 'apartments', 'serviced', 'extended',
+        'stay', 'bed', 'breakfast', 'b&b', 'bungalow', 'cottage', 'cottages', 'the',
+        'and', 'by', 'at', 'in', 'on', 'of', 'a', 'an', '&', 'for', 'with', 'to'
+    }
+
+    def normalize_hotel_name(name, city, state, country_name, hotel_type, hotel_category,
+                             address_line1, address_line2):
+        """
+        Normalize hotel name by removing common words, location info, and address tokens
+        """
+        if not name:
+            return None
+
+        # Convert to lowercase and keep only alphanumeric and spaces
+        normalized = re.sub(r'[^a-z0-9\s]', ' ', name.lower())
+
+        # Split into tokens
+        tokens = normalized.split()
+
+        # Build exclusion set from various fields
+        exclude_tokens = set(common_hotel_words)
+
+        # Add location tokens (exact match)
+        if city:
+            exclude_tokens.update(city.lower().split())
+        if state:
+            exclude_tokens.update(state.lower().split())
+        if country_name:
+            exclude_tokens.update(country_name.lower().split())
+        if hotel_type:
+            exclude_tokens.update(hotel_type.lower().split())
+        if hotel_category:
+            exclude_tokens.update(hotel_category.lower().split())
+
+        # Add address tokens (exact match)
+        if address_line1:
+            address1_clean = re.sub(r'[^a-z0-9\s]', ' ', address_line1.lower())
+            exclude_tokens.update(address1_clean.split())
+        if address_line2:
+            address2_clean = re.sub(r'[^a-z0-9\s]', ' ', address_line2.lower())
+            exclude_tokens.update(address2_clean.split())
+
+        # Filter tokens - keep only those not in exclusion set
+        filtered_tokens = [
+            token for token in tokens if token and token not in exclude_tokens]
+
+        # Join and clean up multiple spaces
+        result = ' '.join(filtered_tokens).strip()
+
+        # Return None if nothing left after normalization
+        return result if result else None
+
+    # Register UDF
+    normalize_name_udf = udf(normalize_hotel_name, StringType())
+
+    # Apply normalization
+    df_mapped = df_mapped.withColumn(
+        "normalized_name",
+        normalize_name_udf(
+            col("hotel_name"),
+            col("city"),
+            col("state"),
+            col("country_name"),
+            col("hotel_type"),
+            col("hotel_category"),
+            col("address_line1"),
+            col("address_line2")
+        )
+    )
+
+    print("   ✓ Normalized name column created")
+
     # Show schema and sample data
-    print("\n5. Mapped data schema:")
+    print("\n6. Mapped data schema:")
     df_mapped.printSchema()
 
-    print("\n6. Sample mapped data:")
+    print("\n7. Sample mapped data with normalized names:")
     df_mapped.select(
-        "hotel_id", "hotel_name", "city", "state",
+        "hotel_id", "hotel_name", "normalized_name", "city", "state",
         "country_code", "star_rating", "latitude", "longitude"
-    ).show(5, truncate=False)
+    ).show(10, truncate=False)
 
     # Write to Parquet format
-    print(f"\n7. Writing to Parquet: {mapped_output_path}")
+    print(f"\n8. Writing to Parquet: {mapped_output_path}")
     df_mapped.write \
         .mode("overwrite") \
         .parquet(mapped_output_path)
@@ -203,13 +286,13 @@ try:
     print("   ✓ Data successfully written to Parquet")
 
     # Verify the write
-    print("\n8. Verifying Parquet output...")
+    print("\n9. Verifying Parquet output...")
     df_verify = spark.read.parquet(mapped_output_path)
     verify_count = df_verify.count()
     print(f"   ✓ Verified {verify_count} records in Parquet files")
 
     # Show statistics
-    print("\n9. Data Statistics:")
+    print("\n10. Data Statistics:")
     print(f"\n   Hotels by City:")
     df_verify.groupBy("city").count().orderBy(col("count").desc()).show(10)
 

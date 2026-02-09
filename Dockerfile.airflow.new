@@ -1,4 +1,4 @@
-FROM apache/airflow:2.8.0-python3.11
+FROM apache/airflow:2.8.0-python3.11 AS airflow-base
 
 USER root
 
@@ -20,10 +20,13 @@ RUN apt-get update && \
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
 ENV PATH=$PATH:$JAVA_HOME/bin
 
-# Spark will be copied from spark-master at runtime
-# Note: We use pip-installed PySpark (not /opt/spark/python) to ensure version consistency
+# Copy Spark from the spark image (already built with 3.5.3)
+COPY --from=hotel-mapping-spark-master:latest /opt/spark /opt/spark
+
 ENV SPARK_HOME=/opt/spark
 ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+
+RUN chown -R airflow:root ${SPARK_HOME}
 
 USER airflow
 
@@ -37,5 +40,8 @@ RUN pip install --no-cache-dir \
     minio==7.2.3 \
     pandas==2.1.4 \
     pyarrow==14.0.2
+
+# Set environment variables
+ENV PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH
 
 USER airflow

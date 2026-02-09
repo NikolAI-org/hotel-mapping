@@ -27,6 +27,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/spark:/opt/airflow/spark
     - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
+    - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:
@@ -248,11 +249,14 @@ services:
 
   # Spark Master
   spark-master:
-    image: apache/spark:3.5.0-python3
-    command: >
-      bash -c " wget -q -P /opt/spark/jars https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && wget -q -P /opt/spark/jars https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master "
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     environment:
       - SPARK_NO_DAEMONIZE=true
+      - PYSPARK_PYTHON=/usr/local/bin/python3
+      - PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3
     ports:
       - "7077:7077"
       - "8081:8080"
@@ -260,6 +264,7 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/spark/conf:/opt/spark/conf
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
+      - spark-tmp:/tmp/spark-tmp
     networks:
       - delta-lake-network
     healthcheck:
@@ -271,17 +276,23 @@ services:
 
   # Spark Worker
   spark-worker:
-    image: apache/spark:3.5.0-python3
-    command: >
-      bash -c " wget -q -P /opt/spark/jars https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && wget -q -P /opt/spark/jars https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar && /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 "
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_NO_DAEMONIZE=true
-      - SPARK_WORKER_MEMORY=2G
-      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=8G
+      - SPARK_WORKER_CORES=6
+      - SPARK_WORKER_DIR=/tmp/spark-work
+      - PYSPARK_PYTHON=/usr/local/bin/python3
+      - PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3
     volumes:
       - ${AIRFLOW_PROJ_DIR:-.}/spark/conf:/opt/spark/conf
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
+      - spark-tmp:/tmp/spark-tmp
+      - spark-work:/tmp/spark-work
     depends_on:
       - spark-master
     networks:
@@ -320,6 +331,8 @@ services:
 volumes:
   postgres-db-volume:
   minio-data:
+  spark-tmp:
+  spark-work:
 
 
 networks:

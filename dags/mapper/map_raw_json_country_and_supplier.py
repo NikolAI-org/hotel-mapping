@@ -26,14 +26,13 @@ default_args = {
 }
 
 
-def run_spark_job(script_path, job_name, **kwargs):
+def run_spark_job_direct(job_name, **kwargs):
     """
-    Run Spark job using spark-submit to properly utilize the Spark cluster
+    Run Spark job using spark-submit with cluster deployment
     """
     import subprocess
 
     print(f"Running Spark job: {job_name}")
-    print(f"Script: {script_path}")
 
     # Get DAG parameters
     params = kwargs['params']
@@ -47,25 +46,34 @@ def run_spark_job(script_path, job_name, **kwargs):
         '/opt/spark/bin/spark-submit',
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
+        '--name', f'MapJSON-{country}-{supplier_name}',
+        '--jars', '/opt/spark-jars/hadoop-aws-3.3.4.jar,/opt/spark-jars/aws-java-sdk-bundle-1.12.262.jar,/opt/spark-jars/delta-spark_2.12-3.1.0.jar,/opt/spark-jars/delta-storage-3.1.0.jar',
+        '--conf', 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension',
+        '--conf', 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog',
         '--conf', 'spark.hadoop.fs.s3a.endpoint=http://minio:9000',
         '--conf', 'spark.hadoop.fs.s3a.access.key=minioadmin',
         '--conf', 'spark.hadoop.fs.s3a.secret.key=minioadmin',
         '--conf', 'spark.hadoop.fs.s3a.path.style.access=true',
         '--conf', 'spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem',
         '--conf', 'spark.hadoop.fs.s3a.connection.ssl.enabled=false',
-        '--executor-memory', '1g',
-        '--executor-cores', '1',
-        '--driver-memory', '1g',
-        script_path
+        '--executor-memory', '4g',
+        '--executor-cores', '4',
+        '--driver-memory', '2g',
+        '--total-executor-cores', '4',
+        '--conf', 'spark.default.parallelism=8',
+        '--conf', 'spark.sql.shuffle.partitions=8',
+        '--conf', 'spark.cores.max=4',
+        '/opt/airflow/spark/jobs/mapper/map_json_to_parquet.py'
     ]
 
-    # Set environment variables for the Spark job
+    # Set environment variables
     env = os.environ.copy()
     env['COUNTRY'] = country
     env['SUPPLIER_NAME'] = supplier_name
+    env['PYSPARK_PYTHON'] = '/usr/local/bin/python3'
+    env['PYSPARK_DRIVER_PYTHON'] = '/usr/local/bin/python3'
 
-    # Execute spark-submit
-    print(f"\nExecuting: {' '.join(spark_submit_cmd)}")
+    print(f"\nExecuting spark-submit...")
     result = subprocess.run(
         spark_submit_cmd,
         env=env,
@@ -92,8 +100,7 @@ def run_spark_job(script_path, job_name, **kwargs):
 
 def map_json_to_parquet(**context):
     """Run JSON to Parquet mapping job"""
-    return run_spark_job(
-        '/opt/airflow/spark/jobs/mapper/map_json_to_parquet.py',
+    return run_spark_job_direct(
         'map-json-to-parquet-job',
         **context
     )
