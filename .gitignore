@@ -76,7 +76,6 @@ _symlink_format_manifest/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # Logs
 *.log
