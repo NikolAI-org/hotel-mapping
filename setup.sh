@@ -22,7 +22,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+if ! command -v docker compose &> /dev/null; then
     echo -e "${RED}❌ Docker Compose is not installed. Please install Docker Compose first.${NC}"
     exit 1
 fi
@@ -118,11 +118,11 @@ fi
 # Build and start services
 echo ""
 echo "Building Docker images (this may take several minutes)..."
-docker-compose build
+docker compose build
 
 echo ""
 echo "Starting all services..."
-docker-compose up -d
+docker compose up -d
 
 echo ""
 echo "Waiting for services to be healthy..."
@@ -160,7 +160,7 @@ fi
 # Check service status
 echo ""
 echo "Checking service status..."
-docker-compose ps
+docker compose ps
 
 echo ""
 echo "=========================================="
@@ -184,7 +184,7 @@ echo "  2. Access Airflow UI and enable the DAGs"
 echo "  3. Trigger 'hotel_data_ingestion' DAG first"
 echo "  4. Then trigger 'hotel_delta_transformation' DAG"
 echo ""
-echo "To view logs: docker-compose logs -f [service-name]"
-echo "To stop: docker-compose down"
-echo "To stop and remove volumes: docker-compose down -v"
+echo "To view logs: docker compose logs -f [service-name]"
+echo "To stop: docker compose down"
+echo "To stop and remove volumes: docker compose down -v"
 echo ""

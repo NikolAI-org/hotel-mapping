@@ -19,7 +19,7 @@ x-airflow-common: &airflow-common
     MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     # Spark Configuration
     SPARK_HOME: /opt/spark
-    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-arm64
+    JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -123,6 +123,15 @@ services:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
     restart: always
+    volumes:
+      - spark-binaries:/opt/spark
+      - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+      - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+      - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+      - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+      - ${AIRFLOW_PROJ_DIR:-.}/spark:/opt/airflow/spark
+      - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
+      - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -261,6 +270,7 @@ services:
       - "7077:7077"
       - "8081:8080"
     volumes:
+      - spark-binaries:/opt/spark
       - ${AIRFLOW_PROJ_DIR:-.}/spark/conf:/opt/spark/conf
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
@@ -291,6 +301,7 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/spark/conf:/opt/spark/conf
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
+      - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
       - spark-tmp:/tmp/spark-tmp
       - spark-work:/tmp/spark-work
     depends_on:
@@ -333,6 +344,7 @@ volumes:
   minio-data:
   spark-tmp:
   spark-work:
+  spark-binaries:
 
 
 networks:

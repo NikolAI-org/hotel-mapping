@@ -1,12 +1,12 @@
 # Custom Spark image with Python 3.11 to match Airflow
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 USER root
 
 # Install Java 21 (required for Spark)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    openjdk-21-jre-headless \
+    openjdk-17-jre-headless \
     wget \
     bash \
     procps \
@@ -14,7 +14,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set Java environment
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH=$PATH:$JAVA_HOME/bin
 
 # Download and install Spark
@@ -25,6 +25,7 @@ ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 
 RUN echo "Downloading Spark ${SPARK_VERSION}..." && \
     wget -q --show-progress https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz -O /tmp/spark.tgz
+#COPY spark-3.5.0-bin-hadoop3.tgz /tmp/spark.tgz
 
 RUN echo "Extracting Spark..." && \
     tar -xzf /tmp/spark.tgz -C /opt
