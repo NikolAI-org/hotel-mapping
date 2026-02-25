@@ -39,7 +39,18 @@ RUN echo "Creating work and logs directories..." && \
     chmod -R 777 ${SPARK_HOME}/work ${SPARK_HOME}/logs
 
 # Install PySpark
-RUN pip install --no-cache-dir pyspark==3.5.3
+RUN pip install \
+#    --no-cache-dir \
+    pyspark==3.5.3 \
+    h3==4.3.1 \
+    pandas==2.1.4 \
+    py4j==0.10.9.7 \
+    pyarrow==14.0.2 \
+    sentence-transformers==3.0.1 \
+    torch \
+    fuzzywuzzy \
+    python-Levenshtein \
+    jupyterlab
 
 # Set Python paths
 ENV PYSPARK_PYTHON=/usr/local/bin/python3

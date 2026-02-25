@@ -28,14 +28,19 @@ ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 USER airflow
 
 # Install Python packages with matching versions
-RUN pip install --no-cache-dir \
-    apache-airflow-providers-apache-spark==4.6.0 \
-    pyspark==3.5.3 \
-    delta-spark==3.1.0 \
-    boto3==1.34.32 \
-    botocore==1.34.32 \
-    minio==7.2.3 \
-    pandas==2.1.4 \
-    pyarrow==14.0.2
+#RUN pip install --no-cache-dir \
+#    apache-airflow-providers-apache-spark==4.6.0 \
+#    pyspark==3.5.3 \
+#    delta-spark==3.1.0 \
+#    boto3==1.34.32 \
+#    botocore==1.34.32 \
+#    minio==7.2.3 \
+#    pandas==2.1.4 \
+#    pyarrow==14.0.2
+
+# Copy requirements and install
+COPY requirements.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt && \
+    pip install --force-reinstall "celery==5.3.6"
 
 USER airflow

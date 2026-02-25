@@ -24,3 +24,11 @@ numpy==1.26.3
 # Utilities
 python-dotenv==1.0.0
 requests==2.31.0
+
+h3==4.3.1
+py4j==0.10.9.7
+sentence-transformers==3.0.1
+torch
+fuzzywuzzy
+python-Levenshtein
+celery==5.3.6

@@ -36,20 +36,17 @@ def run_spark_job_direct(job_name, **kwargs):
 
     # Get DAG parameters
     params = kwargs['params']
-    country = params.get('country', 'india')
     supplier_name = params.get('supplier_name', 'expedia')
 
-    source_path = f"s3a://data-lake/raw_input/{country}/{supplier_name}/"
 
-    print(f"Parameters - Country: {country}, Supplier: {supplier_name}")
-    print(f"Ingesting Source: {source_path}")
+    print(f"Parameters - Supplier: {supplier_name}")
 
     # Build spark-submit command
     spark_submit_cmd = [
         '/opt/spark/bin/spark-submit',
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
-        '--name', f'MapJSON-{country}-{supplier_name}',
+        '--name', f'Pair-Scorer-{supplier_name}',
         '--jars', '/opt/spark-jars/hadoop-aws-3.3.4.jar,/opt/spark-jars/aws-java-sdk-bundle-1.12.262.jar,/opt/spark-jars/delta-spark_2.12-3.1.0.jar,/opt/spark-jars/delta-storage-3.1.0.jar',
         '--conf', 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension',
         '--conf', 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog',
@@ -66,13 +63,12 @@ def run_spark_job_direct(job_name, **kwargs):
         '--conf', 'spark.default.parallelism=8',
         '--conf', 'spark.sql.shuffle.partitions=8',
         '--conf', 'spark.cores.max=4',
-        '/opt/airflow/spark/jobs/ingestion/run_ingestion_job.py',
-        '--source', source_path,
+        '/opt/airflow/spark/jobs/ingestion/run_scoring_job.py',
+        '--supplier', supplier_name,
     ]
 
     # Set environment variables
     env = os.environ.copy()
-    env['COUNTRY'] = country
     env['SUPPLIER_NAME'] = supplier_name
     env['PYSPARK_PYTHON'] = '/usr/local/bin/python3'
     env['PYSPARK_DRIVER_PYTHON'] = '/usr/local/bin/python3'
@@ -102,10 +98,10 @@ def run_spark_job_direct(job_name, **kwargs):
     return 0
 
 
-def map_json_to_parquet(**context):
+def supplier_scorer(**context):
     """Run JSON to Parquet mapping job"""
     return run_spark_job_direct(
-        'map-json-to-parquet-job',
+        'supplier-scorer-job',
         **context
     )
 
@@ -115,41 +111,24 @@ def log_completion(**context):
     Log information about the mapping operation
     """
     params = context['params']
-    country = params.get('country', 'india')
     supplier_name = params.get('supplier_name', 'expedia')
 
     print("=" * 80)
-    print("JSON to Parquet Mapping Completed Successfully!")
+    print("Scoring Completed Successfully!")
     print("=" * 80)
     print(f"\nParameters:")
-    print(f"  Country: {country}")
     print(f"  Supplier: {supplier_name}")
-    print(
-        f"\nSource Path: s3a://data-lake/raw_input/{country}/{supplier_name}/")
-    print(
-        f"Target Path: s3a://data-lake/mapped_input/{country}/{supplier_name}/")
-    print("\nSchema Applied:")
-    print("  - Hotel ID, Name, Provider Information")
-    print("  - Geo Coordinates (lat, long)")
-    print("  - Contact Details (address, phones, emails)")
-    print("  - Hotel Attributes (type, category, star rating)")
-    print("=" * 80)
 
 
 # Define the DAG
 with DAG(
-    'map_raw_json_country_and_supplier',
+    'supplier_scorer',
     default_args=default_args,
-    description='Map raw JSON hotel data to Parquet format by country and supplier',
+    description='Create Pairs and score them',
     schedule_interval=None,
     catchup=False,
-    tags=['mapping', 'json', 'parquet', 'hotel-data'],
+    tags=['blocking', 'pais', 'scoring', 'hotel-data'],
     params={
-        'country': Param(
-            default='india',
-            type='string',
-            description='Country name (e.g., india, usa, uk)',
-        ),
         'supplier_name': Param(
             default='expedia',
             type='string',
@@ -158,10 +137,10 @@ with DAG(
     },
 ) as dag:
 
-    # Task 1: Map JSON to Parquet
+    # Task 1: Create hotel pairs and scores
     map_task = PythonOperator(
-        task_id='map_json_to_parquet',
-        python_callable=map_json_to_parquet,
+        task_id='supplier_scorer',
+        python_callable=supplier_scorer,
         provide_context=True,
     )
 
