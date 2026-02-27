@@ -6,7 +6,7 @@ from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_scor
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
     enhanced_name_scorer,
-    get_numeric_penalty,
+    #get_numeric_penalty,
     JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO, CONTAINMENT_ALGO
 )
 from hotel_data.config.scoring_config import ScoringConstants
@@ -145,7 +145,7 @@ class CandidateScorer(BaseProcessor[DataFrame]):
             )
         )
 
-        penalty_udf = F.udf(get_numeric_penalty, FloatType())
+        #penalty_udf = F.udf(get_numeric_penalty, FloatType())
 
         sbert_df = jaccard_lcs_levenshtein.withColumn(
             "raw_sbert_score",
@@ -172,7 +172,8 @@ class CandidateScorer(BaseProcessor[DataFrame]):
             ).otherwise(
                 F.greatest(
                     F.lit(0.0),
-                    F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+                    #F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+                    F.col("raw_sbert_score")
                 )
             ).cast("float")
         ).withColumn(
@@ -189,8 +190,9 @@ class CandidateScorer(BaseProcessor[DataFrame]):
                 # CASE: Normal -> Cosine - Penalty
                 F.greatest(
                     F.lit(0.0),
-                    F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"),
-                                                                F.col("normalized_name_j"))
+                    #F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"),
+                     #                                           F.col("normalized_name_j"))
+                    F.col("raw_norm_sbert_score")
                 )
             ).cast("float")
         )

@@ -51,23 +51,23 @@ def calculate_unit_score(s1: str, s2: str) -> float:
 
     return 1.0
 
-def get_numeric_penalty(s1: str, s2: str) -> float:
-    """
-    Checks for numeric mismatch and returns the penalty value.
-    Used by both string scorers and SBERT scorers.
-    # e.g., "OYO Townhouse 123" -> {'123'}
-    """
-    if not s1 or not s2:
-        return 0.0
-
-    nums1 = set(re.findall(r'\d+', s1))
-    nums2 = set(re.findall(r'\d+', s2))
-
-    # If BOTH have numbers, and those numbers are DIFFERENT, return penalty.
-    if nums1 and nums2 and nums1 != nums2:
-        return ScoringConstants.NUMERIC_MISMATCH_PENALTY
-
-    return 0.0
+# def get_numeric_penalty(s1: str, s2: str) -> float:
+#     """
+#     Checks for numeric mismatch and returns the penalty value.
+#     Used by both string scorers and SBERT scorers.
+#     # e.g., "OYO Townhouse 123" -> {'123'}
+#     """
+#     if not s1 or not s2:
+#         return 0.0
+#
+#     nums1 = set(re.findall(r'\d+', s1))
+#     nums2 = set(re.findall(r'\d+', s2))
+#
+#     # If BOTH have numbers, and those numbers are DIFFERENT, return penalty.
+#     if nums1 and nums2 and nums1 != nums2:
+#         return ScoringConstants.NUMERIC_MISMATCH_PENALTY
+#
+#     return 0.0
 
 def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleaning: bool = True) -> float:
     """
@@ -229,7 +229,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 4. Apply Numeric Penalty (Common) ---
     # Logic: If BOTH have numbers, and those numbers are DIFFERENT, apply penalty.
     # This applies to the result of ANY selected algorithm.     # e.g., "OYO Townhouse 123" -> {'123'}
-    final_score -= get_numeric_penalty(s1, s2)
+    #removing penalty since added name_unit_score|address_unit_score
+    #final_score -= get_numeric_penalty(s1, s2)
 
     # Ensure score doesn't drop below zero
     return max(0.0, final_score)

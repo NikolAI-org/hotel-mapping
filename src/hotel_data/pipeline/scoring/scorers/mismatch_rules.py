@@ -40,27 +40,43 @@ def _unit_match_score(name_a: str, name_b: str) -> float:
     if not name_a or not name_b:
         return 1.0
 
-    unit_pattern = r'\b(phase|tower|unit|block|apt|apartment|bldg|building|suite|room)?\s*(#)?\s*([0-9]+|[ivx]+|[a-z])\b$'
+    a, b = name_a.lower(), name_b.lower()
 
-    match_a = re.search(unit_pattern, name_a.strip().lower())
-    match_b = re.search(unit_pattern, name_b.strip().lower())
+    # THE FIX:
+    # \d{1,4} limits it to 4 digits. It completely ignores 5+ digit Zip Codes and Property IDs.
+    # Removed [a-z] to prevent "Collection O" from being treated as a unit.
+    unit_pattern = r'\b(\d{1,4}(?:st|nd|rd|th)?|i{1,3}|iv|v|vi{1,3}|ix|x{1,2})\b'
 
-    token_a = match_a.group() if match_a else None
-    token_b = match_b.group() if match_b else None
+    # Extract units
+    units_a = set(re.findall(unit_pattern, a))
+    units_b = set(re.findall(unit_pattern, b))
 
-    if token_a and token_b:
-        # 0.0 = Explicit Conflict (Phase 1 vs Phase 2)
-        if token_a != token_b:
-            return 0.0
-            # 1.0 = Explicit Match (Phase 1 vs Phase 1)
+    # Strip units for base text
+    base_a = re.sub(unit_pattern, '', a)
+    base_b = re.sub(unit_pattern, '', b)
+
+    # Clean remaining whitespaces/punctuation
+    base_a_clean = re.sub(r'[^a-z]', '', base_a)
+    base_b_clean = re.sub(r'[^a-z]', '', base_b)
+
+    # RULE 1: If the base textual names match...
+    if base_a_clean == base_b_clean:
+        if units_a and units_b:
+            if units_a == units_b:
+                return 1.0
+            # THE FIX: If B is just missing info that A has (or vice versa), it's NOT a contradiction!
+            elif units_a.issubset(units_b) or units_b.issubset(units_a):
+                return 0.9
+            else:
+                # Only veto if they share NO common truth (e.g., {1} vs {2})
+                return 0.0
+
+        elif units_a or units_b:
+            return 0.9  # One has a unit, the other has absolutely none
         else:
             return 1.0
 
-    elif token_a or token_b:
-        # 0.8 = Missing from one side (Flag for review)
-        return 0.8
-
-        # 1.0 = Neither has a unit identifier
+    # RULE 2: If bases differ, bypass veto
     return 1.0
 
 

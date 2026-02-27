@@ -60,6 +60,8 @@ def run_job():
     #pair_scorer = CandidateScorer()
     scored_pairs_df = pair_scorer.process(challenger_df, anchor_df)
 
+    scored_pairs_df = scored_pairs_df.repartition(100)
+
     empty_df = spark.createDataFrame([], schema=hotel_pairs_schema)
     manager.create_table(TABLE_HOTELS_PAIRS_NAME, empty_df, comment="Hotel pairwise scores")
 
