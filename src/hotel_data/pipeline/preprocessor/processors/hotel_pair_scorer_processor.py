@@ -50,12 +50,6 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         print("🔍 Running GeoHash Blocker...")
         geohash_blocker = GeoHashBlocker()
         geo_pairs = geohash_blocker.block(anchor_df, challenger_df)
-        print("👉 First few pairs from anchor_df:")
-        anchor_df.show(5, truncate=False)
-
-        print("👉 First few pairs from challenger_df:")
-        challenger_df.show(5, truncate=False)
-
         # ---------------------------------------------------------
         # PROVISION FOR POSTAL BLOCKER (Uncomment to enable!)
         # ---------------------------------------------------------
@@ -66,75 +60,55 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         # ---------------------------------------------------------
         raw_pairs = geo_pairs
 
-        # Because Anchor and Challenger are mutually exclusive,
-        # we don't need 'a.id < b.id'. We just drop exact duplicate pairs!
-        unique_pairs = raw_pairs.dropDuplicates(["id_i", "id_j"])
+        unique_pairs = raw_pairs.dropDuplicates(["uid_i", "uid_j"])
 
-        pairs = unique_pairs.withColumn(
-            "geo_intersection",
-            F.array_intersect(F.col("geoHash_i"), F.col("geoHash_j"))
+        a = anchor_df.alias("a")
+        b = challenger_df.alias("b")
+
+        pairs = unique_pairs \
+            .join(a, F.col("uid_i") == F.col("a.uid"), "inner") \
+            .join(b, F.col("uid_j") == F.col("b.uid"), "inner")
+
+        # Select and alias all required columns, including calculating geo_intersection safely here!
+        pairs = pairs.select(
+            F.col("uid_i"),
+            F.col("uid_j"),
+            F.col("a.providerName").alias("providerName_i"),
+            F.col("b.providerName").alias("providerName_j"),
+            F.col("a.providerHotelId").alias("providerHotelId_i"),
+            F.col("b.providerHotelId").alias("providerHotelId_j"),
+            F.col("a.geoCode_lat").alias("geoCode_lat_i"),
+            F.col("a.geoCode_long").alias("geoCode_long_i"),
+            F.col("b.geoCode_lat").alias("geoCode_lat_j"),
+            F.col("b.geoCode_long").alias("geoCode_long_j"),
+            F.col("a.name").alias("name_i"),
+            F.col("b.name").alias("name_j"),
+            F.col("a.normalized_name").alias("normalized_name_i"),
+            F.col("b.normalized_name").alias("normalized_name_j"),
+            F.col("a.name_embedding").alias("name_embedding_i"),
+            F.col("b.name_embedding").alias("name_embedding_j"),
+            F.col("a.normalized_name_embedding").alias("normalized_name_embedding_i"),
+            F.col("b.normalized_name_embedding").alias("normalized_name_embedding_j"),
+            F.col("a.address_embedding").alias("address_embedding_i"),
+            F.col("b.address_embedding").alias("address_embedding_j"),
+            F.col("a.contact_address_line1").alias("contact_address_line1_i"),
+            F.col("b.contact_address_line1").alias("contact_address_line1_j"),
+            F.col("a.contact_address_postalCode").alias("contact_address_postalCode_i"),
+            F.col("b.contact_address_postalCode").alias("contact_address_postalCode_j"),
+            F.col("a.contact_address_country_name").alias("contact_address_country_name_i"),
+            F.col("b.contact_address_country_name").alias("contact_address_country_name_j"),
+            F.col("a.contact_phones").alias("contact_phones_i"),
+            F.col("b.contact_phones").alias("contact_phones_j"),
+            F.col("a.contact_fax").alias("contact_fax_i"),
+            F.col("b.contact_fax").alias("contact_fax_j"),
+            F.col("a.contact_emails").alias("contact_emails_i"),
+            F.col("b.contact_emails").alias("contact_emails_j"),
+            F.col("a.type").alias("type_i"),
+            F.col("b.type").alias("type_j"),
+            F.col("a.starRating").alias("starRating_i"),
+            F.col("b.starRating").alias("starRating_j"),
+            F.array_intersect(F.col("a.geoHash"), F.col("b.geoHash")).alias("geo_intersection")
         )
-
-        # df = df.withColumn("unique_key",
-        #                                F.concat(F.col("providerId"), F.lit("_"), F.col("providerHotelId")))
-        # a = df.alias("a")
-        # b = df.alias("b")
-        #
-        # # Pair logic based on geohash overlap
-        # pairs = (
-        #     a.join(
-        #         b,
-        #         F.size(
-        #             F.array_intersect(F.col(f"a.{self.geohash_col}"),
-        #                               F.col(f"b.{self.geohash_col}"))
-        #         ) > 0
-        #     )
-        #     .filter(F.col("a.unique_key") < F.col("b.unique_key"))  # avoid self-join and reverse duplicates
-        #     .select(
-        #         F.col("a.id").alias("id_i"),
-        #         F.col("b.id").alias("id_j"),
-        #         F.col(f"a.providerHotelId").alias("providerHotelId_i"),
-        #         F.col(f"b.providerHotelId").alias("providerHotelId_j"),
-        #         F.col(f"a.name").alias("name_i"),
-        #         F.col(f"b.name").alias("name_j"),
-        #         F.col(f"a.uid").alias("uid_i"),
-        #         F.col(f"b.uid").alias("uid_j"),
-        #         F.col(f"a.normalized_name").alias("normalized_name_i"),
-        #         F.col(f"b.normalized_name").alias("normalized_name_j"),
-        #         F.col(f"a.name_embedding").alias("name_embedding_i"),
-        #         F.col(f"b.name_embedding").alias("name_embedding_j"),
-        #         F.col(f"a.normalized_name_embedding").alias("normalized_name_embedding_i"),
-        #         F.col(f"b.normalized_name_embedding").alias("normalized_name_embedding_j"),
-        #         F.col(f"a.geoCode_lat").alias("geoCode_lat_i"),
-        #         F.col(f"a.geoCode_long").alias("geoCode_long_i"),
-        #         F.col(f"b.geoCode_lat").alias("geoCode_lat_j"),
-        #         F.col(f"b.geoCode_long").alias("geoCode_long_j"),
-        #         F.col(f"a.starRating").alias("starRating_i"),
-        #         F.col(f"b.starRating").alias("starRating_j"),
-        #         F.col(f"a.contact_address_line1").alias("contact_address_line1_i"),
-        #         F.col(f"b.contact_address_line1").alias("contact_address_line1_j"),
-        #         F.col(f"a.contact_address_postalCode").alias("contact_address_postalCode_i"),
-        #         F.col(f"b.contact_address_postalCode").alias("contact_address_postalCode_j"),
-        #         F.col(f"a.contact_address_country_name").alias("contact_address_country_name_i"),
-        #         F.col(f"b.contact_address_country_name").alias("contact_address_country_name_j"),
-        #         F.col(f"a.address_embedding").alias("address_embedding_i"),
-        #         F.col(f"b.address_embedding").alias("address_embedding_j"),
-        #         F.col(f"a.combined_address").alias("combined_address_i"),
-        #         F.col(f"b.combined_address").alias("combined_address_j"),
-        #         F.col(f"a.contact_phones").alias("contact_phones_i"),
-        #         F.col(f"b.contact_phones").alias("contact_phones_j"),
-        #         F.col(f"a.contact_fax").alias("contact_fax_i"),
-        #         F.col(f"b.contact_fax").alias("contact_fax_j"),
-        #         F.col(f"a.contact_emails").alias("contact_emails_i"),
-        #         F.col(f"b.contact_emails").alias("contact_emails_j"),
-        #         F.array_intersect(
-        #             F.col("a.geohash"), F.col("b.geohash")
-        #         ).alias("geo_intersection")
-        #     )
-        # )
-
-        print("👉 Pair generation complete. First few pairs:")
-        pairs.show(5, truncate=False)
 
         haversine_udf = F.udf(haversine, "double")
 
@@ -390,6 +364,17 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         ).withColumn(
             "address_unit_score",
             unit_match_udf(F.col("contact_address_line1_i"), F.col("contact_address_line1_j"))
+        ).withColumn(
+            # NEW: Intra-Supplier Match Flag
+            # 1 = Same Supplier (Intra-duplicate)
+            # 0 = Different Suppliers (Inter-match)
+            "supplier_score",
+            F.when(F.col("providerName_i") == F.col("providerName_j"), 1).otherwise(0)
+        )
+
+        df_scores = df_scores.filter(
+            (F.col("providerName_i") != F.col("providerName_j")) |
+            (F.col("uid_i") < F.col("uid_j"))
         )
 
         # Ensure scores are 0.0 instead of NULL where comparison failed due to missing data
@@ -404,8 +389,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             )
         )
 
-        print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
-        pairs_with_ratings_score.show(20, truncate=False)
+        #print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
+        #pairs_with_ratings_score.show(20, truncate=False)
 
         cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection"
             , "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j"

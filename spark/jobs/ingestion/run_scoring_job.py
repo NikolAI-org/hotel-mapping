@@ -54,7 +54,9 @@ def run_job():
     )
 
     challenger_df = hotels_df.filter(F.col("providerName") == provider_name)
-    anchor_df = hotels_df.filter(F.col("providerName") != provider_name)
+    #anchor_df = hotels_df.filter(F.col("providerName") != provider_name)
+    #The Anchor is now the ENTIRE table.
+    anchor_df = hotels_df
 
     pair_scorer = HotelPairScorerProcessor()
     #pair_scorer = CandidateScorer()

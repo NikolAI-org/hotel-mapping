@@ -45,6 +45,9 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
         '--name', job_name,
+        '--executor-memory', '2g',  # Give the worker nodes 2GB of RAM
+        '--executor-cores', '1',  # STRICTLY 1 core so it only loads 1 PyTorch model!
+        '--driver-memory', '2g',
         '--packages',
         'io.delta:delta-spark_2.12:3.3.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
         '--conf', 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension',
