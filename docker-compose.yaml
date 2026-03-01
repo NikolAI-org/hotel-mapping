@@ -124,6 +124,8 @@ services:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
       AIRFLOW__CELERY__WORKER_NAME: "airflow-worker"
+    ports:
+      - "4040:4040"
     restart: always
     volumes:
       - spark-binaries:/opt/spark

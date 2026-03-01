@@ -11,7 +11,8 @@ sys.path.append('/opt/airflow')
 from hotel_data.config.paths import BASE_DELTA_PATH, CATALOG_NAME, SCHEMA_NAME, TABLE_HOTELS_NAME, TABLE_HOTELS_FAILED_NAME
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
-from hotel_data.schema.input.preprocessor_schema import hotel_schema
+from hotel_data.schema.input.preprocessor_schema import hotel_struct_schema
+from hotel_data.schema.input.preprocessor_schema import hotel_array_schema
 #from spark.jobs.ingestion.preprocessing_pipeline import PreprocessingPipeline
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
 from hotel_data.pipeline.preprocessor.processors.hotel_data_processor import HotelFlattenerProcessor
@@ -58,6 +59,8 @@ def run_job():
     # 2. Read Raw JSON
     # recursiveFileLookup allows reading nested folders if needed
     #raw_df = spark.read.option("recursiveFileLookup", "true").json(source_path)
+    #hotel_schema = hotel_struct_schema
+    hotel_schema = hotel_array_schema
     reader = JSONStreamReader(source_path, schema=hotel_schema)
     raw_df = reader.read(spark)
 
@@ -119,10 +122,21 @@ def run_job():
 def process_batch(batch_df, batch_id, manager):
     # REMOVED: batch_df.rdd.isEmpty() call to avoid extra actions
     print(f"--- Processing Micro-batch {batch_id} ---")
-
+    raw_count = batch_df.count()
+    print(f"🐛 DEBUG [1 - Raw Input]: Read {raw_count} records from JSON files.")
     # Initial Processors
     flat_df = HotelFlattenerProcessor(explode_arrays=True).process(batch_df)
+    flat_count = flat_df.count()
+    print(f"🐛 DEBUG [2 - Flattened]: {flat_count} records exist after flattening/coalescing.")
     valid_df, invalid_df = MandatoryFieldsFilterProcessor(CRITICAL_FIELDS).process(flat_df)
+    valid_count = valid_df.count()
+    invalid_count = invalid_df.count()
+    print(f"🐛 DEBUG [3 - Mandatory Filter]: {valid_count} passed, {invalid_count} failed.")
+
+    if invalid_count > 0:
+        print("🐛 DEBUG [4 - Why did they fail?]: Here are 3 rejected records. Look for NULLs in critical fields!")
+        # We select the critical fields so you can visually see which one is causing the rejection
+        invalid_df.select("id", "providerHotelId", *CRITICAL_FIELDS).show(3, truncate=False)
 
     # Transformation Pipeline
     transformation_pipeline = DataProcessingPipeline([
@@ -137,6 +151,8 @@ def process_batch(batch_df, batch_id, manager):
 
     valid_df = transformation_pipeline.run(valid_df)
     valid_df = GeoHashProcessor().process(valid_df)
+
+    valid_df = valid_df.repartition(60)
 
     # COMBINED SBERT STEP: Run UDF once for all columns
     valid_df = valid_df.withColumn(
