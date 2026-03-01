@@ -6,10 +6,11 @@ import subprocess
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
 SUPPLIERS = ["ean", "bookingcom",
-             #"ratehawk",
+             "ratehawk",
              # "grnconnect",
              # "hobse",
              ]
+# SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = 'india'
 
 default_args = {
