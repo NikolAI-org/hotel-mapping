@@ -71,6 +71,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
 
         # Select and alias all required columns, including calculating geo_intersection safely here!
         pairs = pairs.select(
+            F.col("a.id").alias("id_i"),
+            F.col("b.id").alias("id_j"),
             F.col("uid_i"),
             F.col("uid_j"),
             F.col("a.providerName").alias("providerName_i"),
