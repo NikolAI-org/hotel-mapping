@@ -48,5 +48,11 @@ else
     echo "✓ Spark binaries already present"
 fi
 
+# Create spark-events directory with proper permissions
+echo "Setting up Spark event log directory..."
+mkdir -p /tmp/spark-events
+chmod 777 /tmp/spark-events 2>/dev/null || true
+echo "✓ Spark event log directory ready"
+
 # Execute the original entrypoint
 exec /entrypoint "$@"

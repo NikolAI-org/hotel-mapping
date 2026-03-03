@@ -1,4 +1,5 @@
-FROM apache/airflow:2.8.0-python3.11
+ARG TARGETPLATFORM=linux/arm64
+FROM --platform=$TARGETPLATFORM apache/airflow:2.8.0-python3.11
 
 USER root
 
@@ -17,8 +18,11 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Java environment variables
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
 ENV PATH=$PATH:$JAVA_HOME/bin
+
+# Create Spark event log directory with proper permissions
+RUN mkdir -p /tmp/spark-events && chmod 777 /tmp/spark-events
 
 # Spark will be copied from spark-master at runtime
 # Note: We use pip-installed PySpark (not /opt/spark/python) to ensure version consistency

@@ -9,7 +9,7 @@ from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_scor
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
     enhanced_name_scorer,
-    #get_numeric_penalty,
+    # get_numeric_penalty,
     JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO, CONTAINMENT_ALGO
 )
 from hotel_data.config.scoring_config import ScoringConstants
@@ -30,37 +30,55 @@ def get_cosine_similarity_expr(col_a, col_b):
         lambda acc, x: acc + x
     )
     # Calculate Magnitudes
-    mag_a = F.sqrt(F.aggregate(col_a, F.lit(0.0), lambda acc, x: acc + (x * x)))
-    mag_b = F.sqrt(F.aggregate(col_b, F.lit(0.0), lambda acc, x: acc + (x * x)))
-    
+    mag_a = F.sqrt(F.aggregate(col_a, F.lit(
+        0.0), lambda acc, x: acc + (x * x)))
+    mag_b = F.sqrt(F.aggregate(col_b, F.lit(
+        0.0), lambda acc, x: acc + (x * x)))
+
     # Cosine Similarity = Dot Product / (||a|| * ||b||)
     return F.when((mag_a > 0) & (mag_b > 0), dot_product / (mag_a * mag_b)).otherwise(F.lit(0.0))
 
+
 class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
     """
-    Compute pairwise attribute scores for hotels grouped by geohash.
-    Returns a DataFrame with id_i, id_j, geoHash, and attribute scores.
+    Compute pairwise attribute scores for hotels using geohash-based blocking.
+    Supports: GeoHash (location proximity).
+    Returns a DataFrame with id_i, id_j, and attribute scores.
     """
 
-    def __init__(self, id_col="id", geohash_col="geoHash"):
+    def __init__(self, id_col="id", geohash_col="geoHash", use_geo_blocker=True):
+        """
+        Args:
+            use_geo_blocker: Use geohash-based blocking (location proximity)
+        """
         self.id_col = id_col
         self.geohash_col = geohash_col
+        self.use_geo_blocker = use_geo_blocker
 
     def process(self, challenger_df: DataFrame, anchor_df: DataFrame) -> DataFrame:
-        print("🔍 Running GeoHash Blocker...")
+        """
+        Geo-blocking pipeline: Use geohash-based blocking to narrow by location.
+        """
+
+        # Geo Blocker
+        if not self.use_geo_blocker:
+            raise ValueError("Geo blocker must be enabled!")
+
+        print("🔍 GeoHash Blocker...")
         geohash_blocker = GeoHashBlocker()
         geo_pairs = geohash_blocker.block(anchor_df, challenger_df)
-        # ---------------------------------------------------------
-        # PROVISION FOR POSTAL BLOCKER (Uncomment to enable!)
-        # ---------------------------------------------------------
-        # print("🔍 Running Postal Code Blocker...")
-        # postal_blocker = PostalCodeBlocker()
-        # postal_pairs = postal_blocker.block(anchor_df, challenger_df)
-        # raw_pairs = geo_pairs.unionByName(postal_pairs)
-        # ---------------------------------------------------------
-        raw_pairs = geo_pairs
+        geo_pair_count = geo_pairs.count()
+        print(f"   Geo pairs: {geo_pair_count}")
 
-        unique_pairs = raw_pairs.dropDuplicates(["uid_i", "uid_j"])
+        # Early return if no geo matches
+        if geo_pair_count == 0:
+            print("   ⚠️ No geographic matches found. Returning empty result.")
+            return geo_pairs  # Empty DataFrame with correct schema
+
+        # Deduplicate
+        unique_pairs = geo_pairs.dropDuplicates(["uid_i", "uid_j"])
+        unique_count = unique_pairs.count()
+        print(f"   Total pairs: {unique_count}")
 
         a = anchor_df.alias("a")
         b = challenger_df.alias("b")
@@ -71,6 +89,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
 
         # Select and alias all required columns, including calculating geo_intersection safely here!
         pairs = pairs.select(
+            F.col("a.id").alias("id_i"),
+            F.col("b.id").alias("id_j"),
             F.col("uid_i"),
             F.col("uid_j"),
             F.col("a.providerName").alias("providerName_i"),
@@ -85,18 +105,26 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             F.col("b.name").alias("name_j"),
             F.col("a.normalized_name").alias("normalized_name_i"),
             F.col("b.normalized_name").alias("normalized_name_j"),
+            F.col("a.combined_address").alias("combined_address_i"),
+            F.col("b.combined_address").alias("combined_address_j"),
             F.col("a.name_embedding").alias("name_embedding_i"),
             F.col("b.name_embedding").alias("name_embedding_j"),
-            F.col("a.normalized_name_embedding").alias("normalized_name_embedding_i"),
-            F.col("b.normalized_name_embedding").alias("normalized_name_embedding_j"),
+            F.col("a.normalized_name_embedding").alias(
+                "normalized_name_embedding_i"),
+            F.col("b.normalized_name_embedding").alias(
+                "normalized_name_embedding_j"),
             F.col("a.address_embedding").alias("address_embedding_i"),
             F.col("b.address_embedding").alias("address_embedding_j"),
             F.col("a.contact_address_line1").alias("contact_address_line1_i"),
             F.col("b.contact_address_line1").alias("contact_address_line1_j"),
-            F.col("a.contact_address_postalCode").alias("contact_address_postalCode_i"),
-            F.col("b.contact_address_postalCode").alias("contact_address_postalCode_j"),
-            F.col("a.contact_address_country_name").alias("contact_address_country_name_i"),
-            F.col("b.contact_address_country_name").alias("contact_address_country_name_j"),
+            F.col("a.contact_address_postalCode").alias(
+                "contact_address_postalCode_i"),
+            F.col("b.contact_address_postalCode").alias(
+                "contact_address_postalCode_j"),
+            F.col("a.contact_address_country_name").alias(
+                "contact_address_country_name_i"),
+            F.col("b.contact_address_country_name").alias(
+                "contact_address_country_name_j"),
             F.col("a.contact_phones").alias("contact_phones_i"),
             F.col("b.contact_phones").alias("contact_phones_j"),
             F.col("a.contact_fax").alias("contact_fax_i"),
@@ -107,7 +135,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             F.col("b.type").alias("type_j"),
             F.col("a.starRating").alias("starRating_i"),
             F.col("b.starRating").alias("starRating_j"),
-            F.array_intersect(F.col("a.geoHash"), F.col("b.geoHash")).alias("geo_intersection")
+            F.array_intersect(F.col("a.geoHash"), F.col(
+                "b.geoHash")).alias("geo_intersection")
         )
 
         haversine_udf = F.udf(haversine, "double")
@@ -122,10 +151,42 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             )
         )
 
-        pairs_filtered = pairs_with_distance.filter(F.col("geo_distance_km") <= 0.5)
+        pairs_filtered = pairs_with_distance.filter(
+            F.col("geo_distance_km") <= 0.5)
+
+        # ========================================
+        # SHORT-CIRCUIT: Fast name similarity filter
+        # ========================================
+        # Calculate cheap Jaccard score first to filter out obvious non-matches
+        # before computing expensive SBERT/LCS/Levenshtein scores
         name_udf = F.udf(enhanced_name_scorer, "float")
 
-        containment = pairs_filtered.withColumn(
+        pairs_with_quick_score = pairs_filtered.withColumn(
+            "quick_name_jaccard",
+            name_udf(
+                F.col("name_i"),
+                F.col("name_j"),
+                F.lit(JACCARD_ALGO),
+                F.lit(False)
+            )
+        )
+
+        # Filter: Keep only pairs with minimum name similarity (30%)
+        # This eliminates ~70-80% of pairs before expensive computation
+        MIN_NAME_SIMILARITY = 0.6
+        pairs_filtered_by_name = pairs_with_quick_score.filter(
+            F.col("quick_name_jaccard") >= MIN_NAME_SIMILARITY
+        )
+
+        filtered_pair_count = pairs_filtered_by_name.count()
+        print(
+            f"   Short-circuit: Filtered by name similarity (>={MIN_NAME_SIMILARITY})")
+        print(f"   Remaining pairs after name filter: {filtered_pair_count}")
+        print(
+            f"   Eliminated: {unique_count - filtered_pair_count} pairs ({100 * (unique_count - filtered_pair_count) / unique_count:.1f}%)")
+
+        # Now compute full scores only for promising pairs
+        containment = pairs_filtered_by_name.withColumn(
             "name_score_containment",
             name_udf(
                 F.col("name_i"), F.col("name_j"),
@@ -141,19 +202,15 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
 
         jaccard_lcs_levenshtein = containment.withColumn(
             "name_score_jaccard",
-            name_udf(
-                F.col("name_i"),
-                F.col("name_j"),
-                F.lit(JACCARD_ALGO),
-                F.lit(False),
-            )
+            # Reuse already computed Jaccard from name_i/name_j
+            F.col("quick_name_jaccard")
         ).withColumn(
             "normalized_name_score_jaccard",
             name_udf(
                 F.col("normalized_name_i"),
                 F.col("normalized_name_j"),
                 F.lit(JACCARD_ALGO),
-                F.lit(True),
+                F.lit(True)
             )
         ).withColumn(
             "name_score_lcs",
@@ -189,14 +246,16 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             )
         )
 
-        #penalty_udf = F.udf(get_numeric_penalty, FloatType())
+        # penalty_udf = F.udf(get_numeric_penalty, FloatType())
 
         sbert_df = jaccard_lcs_levenshtein.withColumn(
             "raw_sbert_score",
-            get_cosine_similarity_expr(F.col("name_embedding_i"), F.col("name_embedding_j")).cast("float")
+            get_cosine_similarity_expr(F.col("name_embedding_i"), F.col(
+                "name_embedding_j")).cast("float")
         ).withColumn(
             "raw_norm_sbert_score",
-            get_cosine_similarity_expr(F.col("normalized_name_embedding_i"), F.col("normalized_name_embedding_j")).cast("float")
+            get_cosine_similarity_expr(F.col("normalized_name_embedding_i"), F.col(
+                "normalized_name_embedding_j")).cast("float")
         )
 
         # HELPER: Check for Empty/Null Strings
@@ -215,7 +274,7 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             ).otherwise(
                 F.greatest(
                     F.lit(0.0),
-                    #F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
+                    # F.col("raw_sbert_score") - penalty_udf(F.col("name_i"), F.col("name_j"))
                     F.col("raw_sbert_score")
                 )
             ).cast("float")
@@ -233,7 +292,7 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
                 # CASE: Normal -> Cosine - Penalty
                 F.greatest(
                     F.lit(0.0),
-                    #F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"),
+                    # F.col("raw_norm_sbert_score") - penalty_udf(F.col("normalized_name_i"),
                     #                                            F.col("normalized_name_j"))
                     F.col("raw_norm_sbert_score")
                 )
@@ -244,28 +303,30 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         df_with_averages = sbert_penalized.withColumn(
             "average_name_score",
             (
-                    F.col("name_score_jaccard") +
-                    F.col("name_score_lcs") +
-                    F.col("name_score_levenshtein") +
-                    F.col("name_score_sbert")
+                F.col("name_score_jaccard") +
+                F.col("name_score_lcs") +
+                F.col("name_score_levenshtein") +
+                F.col("name_score_sbert")
             ) / 4.0
         ).withColumn(
             "average_normalized_name_score",
             (
-                    F.col("normalized_name_score_jaccard") +
-                    F.col("normalized_name_score_lcs") +
-                    F.col("normalized_name_score_levenshtein") +
-                    F.col("normalized_name_score_sbert")
+                F.col("normalized_name_score_jaccard") +
+                F.col("normalized_name_score_lcs") +
+                F.col("normalized_name_score_levenshtein") +
+                F.col("normalized_name_score_sbert")
             ) / 4.0
         )
         # Clean up temporary columns
-        df_final = df_with_averages.drop("raw_sbert_score", "raw_norm_sbert_score")
+        df_final = df_with_averages.drop(
+            "raw_sbert_score", "raw_norm_sbert_score")
 
         # Handle cases where embedding might be null (fill with 0.0)
         sbert = df_final.fillna(0.0, subset=["name_score_sbert"])
 
         # Handle cases where embedding might be null (fill with 0.0)
-        normalized_sbert = sbert.fillna(0.0, subset=["normalized_name_score_sbert"])
+        normalized_sbert = sbert.fillna(
+            0.0, subset=["normalized_name_score_sbert"])
 
         # Register UDF
         token_sort_udf = F.udf(token_sort_score, "float")
@@ -284,7 +345,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
                 F.lit(0.5)
             ).when(
                 # Scenario 2: Both Present & Match -> Perfect Score
-                F.col("contact_address_postalCode_i") == F.col("contact_address_postalCode_j"),
+                F.col("contact_address_postalCode_i") == F.col(
+                    "contact_address_postalCode_j"),
                 F.lit(1.0)
             ).otherwise(
                 # Scenario 3: Both Present & Different -> Mismatch Penalty
@@ -299,7 +361,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
                 F.lit(0.5)
             ).when(
                 # Scenario 2: Both Present & Match -> Perfect Score
-                F.col("contact_address_country_name_i") == F.col("contact_address_country_name_j"),
+                F.col("contact_address_country_name_i") == F.col(
+                    "contact_address_country_name_j"),
                 F.lit(1.0)
             ).otherwise(
                 # Scenario 3: Both Present & Different -> Mismatch Penalty
@@ -310,7 +373,7 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             get_cosine_similarity_expr(
                 F.col("address_embedding_i"),
                 F.col("address_embedding_j")
-            ).cast("float") # Ensure cast to match schema
+            ).cast("float")  # Ensure cast to match schema
         )
 
         # Helper to check for "Missing Data" (Null OR Empty Array)
@@ -327,7 +390,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             "phone_match_score",
             F.when(
                 # Scenario 1: Data Missing on Either Side -> Neutral
-                is_empty_or_null("norm_phones_i") | is_empty_or_null("norm_phones_j"),
+                is_empty_or_null("norm_phones_i") | is_empty_or_null(
+                    "norm_phones_j"),
                 F.lit(0.5)
             ).when(
                 # Scenario 2: Data Present & Overlaps -> Match
@@ -340,7 +404,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         ).withColumn(
             "email_match_score",
             F.when(
-                is_empty_or_null("contact_emails_i") | is_empty_or_null("contact_emails_j"),
+                is_empty_or_null("contact_emails_i") | is_empty_or_null(
+                    "contact_emails_j"),
                 F.lit(0.5)
             ).when(
                 arrays_overlap_check("contact_emails_i", "contact_emails_j"),
@@ -349,7 +414,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         ).withColumn(
             "fax_match_score",
             F.when(
-                is_empty_or_null("contact_fax_i") | is_empty_or_null("contact_fax_j"),
+                is_empty_or_null("contact_fax_i") | is_empty_or_null(
+                    "contact_fax_j"),
                 F.lit(0.5)
             ).when(
                 arrays_overlap_check("contact_fax_i", "contact_fax_j"),
@@ -363,13 +429,15 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             unit_match_udf(F.col("name_i"), F.col("name_j"))
         ).withColumn(
             "address_unit_score",
-            unit_match_udf(F.col("contact_address_line1_i"), F.col("contact_address_line1_j"))
+            unit_match_udf(F.col("contact_address_line1_i"),
+                           F.col("contact_address_line1_j"))
         ).withColumn(
             # NEW: Intra-Supplier Match Flag
             # 1 = Same Supplier (Intra-duplicate)
             # 0 = Different Suppliers (Inter-match)
             "supplier_score",
-            F.when(F.col("providerName_i") == F.col("providerName_j"), 1).otherwise(0)
+            F.when(F.col("providerName_i") == F.col(
+                "providerName_j"), 1).otherwise(0)
         )
 
         df_scores = df_scores.filter(
@@ -378,7 +446,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
         )
 
         # Ensure scores are 0.0 instead of NULL where comparison failed due to missing data
-        address_score = df_scores.fillna(0.0, subset=["address_line1_score", "address_sbert_score"])
+        address_score = df_scores.fillna(
+            0.0, subset=["address_line1_score", "address_sbert_score"])
 
         ratings_udf = F.udf(star_rating_score, "float")
         pairs_with_ratings_score = address_score.withColumn(
@@ -389,14 +458,10 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             )
         )
 
-        #print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
-        #pairs_with_ratings_score.show(20, truncate=False)
+        # print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
+        # pairs_with_ratings_score.show(20, truncate=False)
 
-        cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection"
-            , "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j"
-            , "normalized_name_embedding_i", "normalized_name_embedding_j", "contact_address_line1_i", "contact_address_line1_j"
-            , "contact_address_postalCode_i", "contact_address_postalCode_j", "contact_address_country_name_i", "contact_address_country_name_j"
-            , "address_embedding_i", "address_embedding_j", "contact_phones_i", "contact_phones_j", "contact_fax_i", "contact_fax_j"
-            , "contact_emails_i", "contact_emails_j", "norm_phones_i", "norm_phones_j", "norm_faxes_i", "norm_faxes_j"]
+        cols_to_remove = ["uid_i", "uid_j", "quick_name_jaccard", "geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection", "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j", "normalized_name_embedding_i", "normalized_name_embedding_j", "contact_address_line1_i", "contact_address_line1_j", "contact_address_postalCode_i",
+                          "contact_address_postalCode_j", "contact_address_country_name_i", "contact_address_country_name_j", "address_embedding_i", "address_embedding_j", "contact_phones_i", "contact_phones_j", "contact_fax_i", "contact_fax_j", "contact_emails_i", "contact_emails_j", "norm_phones_i", "norm_phones_j", "norm_faxes_i", "norm_faxes_j"]
         required_df = pairs_with_ratings_score.drop(*cols_to_remove)
         return required_df
