@@ -44,6 +44,7 @@ metastore_db/
 spark-warehouse/
 *.parquet
 *.orc
+spark/jars/*.jar
 
 # Delta Lake
 _delta_log/
