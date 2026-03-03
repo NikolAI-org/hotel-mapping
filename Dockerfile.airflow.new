@@ -1,4 +1,4 @@
-FROM apache/airflow:2.8.0-python3.11 AS airflow-base
+FROM --platform=linux/arm64 apache/airflow:2.8.0-python3.11 AS airflow-base
 
 USER root
 

@@ -1,5 +1,5 @@
 # Custom Spark image with Python 3.11 to match Airflow
-FROM python:3.11-slim-bookworm
+FROM --platform=linux/arm64 python:3.11-slim-bookworm
 
 USER root
 
@@ -14,7 +14,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set Java environment
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+#ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
 ENV PATH=$PATH:$JAVA_HOME/bin
 
 # Download and install Spark
@@ -40,7 +41,7 @@ RUN echo "Creating work and logs directories..." && \
 
 # Install PySpark
 RUN pip install \
-#    --no-cache-dir \
+    #    --no-cache-dir \
     pyspark==3.5.3 \
     h3==4.3.1 \
     pandas==2.1.4 \
