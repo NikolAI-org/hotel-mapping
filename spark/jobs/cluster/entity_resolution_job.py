@@ -56,7 +56,7 @@ class IncrementalClusterResolver:
                 F.col("uid_j").alias("src"),
                 F.col("uid_i").alias("dst")
             )
-        )
+        ).distinct()
 
         # 3️⃣ Build node set (existing clusters + new hotels) using uid
         existing_nodes = existing_clusters_df.select("uid", "cluster_id")
@@ -136,7 +136,7 @@ class EntityResolutionPipeline:
                 (F.col("providerName_i") == current_provider) |
                 (F.col("providerName_j") == current_provider)
             )
-            has_pairs = not new_pairs_df.rdd.isEmpty()
+            has_pairs = not new_pairs_df.isEmpty()
         except Exception:
             has_pairs = False
 
