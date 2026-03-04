@@ -142,7 +142,7 @@ with DAG(
     catchup=False,
     tags=["delta", "minio", "hotels"],
     params={
-        "s3_path": "s3a://data-lake/hotel_data/final_clusters"
+        "s3_path": "s3a://delta-lake/bronze/final_clusters"
     },
 ) as dag:
     read_delta_task = PythonOperator(
