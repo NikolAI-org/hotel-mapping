@@ -5,12 +5,12 @@ from datetime import datetime, timedelta
 import subprocess
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
-# SUPPLIERS = ["ean", "bookingcom",
-#              "grnconnect",
-#              "hobse",
-#              "ratehawk"
-#              ]
-SUPPLIERS = ["hobse", "grnconnect" ]
+SUPPLIERS = ["ean", "bookingcom",
+             "grnconnect",
+             "hobse",
+             "ratehawk"
+             ]
+# SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = 'india'
 
 default_args = {

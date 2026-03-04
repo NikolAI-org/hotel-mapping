@@ -30,13 +30,25 @@ def main():
 
         print("\n=== SAMPLE DATA (Top 20 Rows) ===")
         df.show(20, truncate=False)
+    
+        clusters = (
+            df.groupBy("cluster_id")
+            .agg(
+                F.count("*").alias("hotel_count"),
+                F.collect_list("name").alias("hotel_names")
+            )
+            .orderBy(F.desc("hotel_count"))
+        )
 
-        print("\n=== Distinct Provider Names ===")
-        df.filter((F.col("name") == "oyo rooms andheri station") | 
-            (F.col("name") == "oyo rooms andheri station 2") |
-            (F.col("name") == "hotel ascot neo a k palace") |
-            (F.col("name") == "hotel ascot neo a k palace by oyo")
-        ).show(truncate=False)
+        clusters.show(50, truncate=False)
+
+        # print("\n=== Distinct Provider Names ===")
+        # df.filter((F.col("name") == "oyo rooms andheri station") | 
+        #     (F.col("name") == "oyo rooms andheri station 2") |
+        #     (F.col("name") == "hotel ascot neo a k palace") |
+        #     (F.col("name") == "hotel ascot neo a k palace by oyo")
+        # ).show(truncate=False)
+        
         
         # print("\n=== Distinct Status Count ===")
         # df.select("status").distinct().count()

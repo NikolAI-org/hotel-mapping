@@ -146,9 +146,9 @@ class EntityResolutionPipeline:
             scored_pairs = self.scorer.process(new_pairs_df)
 
             history_df = scored_pairs.select(
-                F.col("id_i").alias("hotel_id"),
+                F.col("uid_i").alias("hotel_id"),
                 F.col("name_i").alias("hotel_name"),
-                F.col("id_j").alias("compared_with_id"),
+                F.col("uid_j").alias("compared_with_id"),
                 F.col("name_j").alias("compared_with_name"),
                 F.col("composite_score").alias("score"),
                 F.col("classification").alias("status"),
