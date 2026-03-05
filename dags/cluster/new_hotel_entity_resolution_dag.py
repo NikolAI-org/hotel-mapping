@@ -29,7 +29,92 @@ DEFAULT_CONFIG = {
     "threshold_low": 0.80,
     "provider_name": "hobse",  # Default provider
 }
+DEFAULT_MATCH_LOGIC = {
+    "operator": "AND",
+    "rules": [
+        # 1: Simple Leaf (Unary context)
+        {"signal": "geo_distance_km", "threshold": 0.5, "comparator": "lte"},
+        
+        # 2: Name Matching Block (OR)
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                # Nested Jaccard check
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_jaccard", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_jaccard", "threshold": 0.9, "comparator": "gte"}
+                    ]
+                },
+                # Nested LCS check
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_lcs", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_lcs", "threshold": 0.9, "comparator": "gte"}
+                    ]
+                },
+                # Nested Levenshtein check
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_levenshtein", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_levenshtein", "threshold": 0.9, "comparator": "gte"}
+                    ]
+                },
+                # Nested SBERT check
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_sbert", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_sbert", "threshold": 0.9, "comparator": "gte"}
+                    ]
+                }
+            ]
+        },
+        
+        # 3: Address Block (OR)
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "address_line1_score", "threshold": 0.2, "comparator": "gte"},
+                {"signal": "address_sbert_score", "threshold": 0.2, "comparator": "gte"}
+            ]
+        },
+        
+        # 4: Rating Check
+        {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
+        
+        # 5: Postal/Distance Block (OR)
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"}
+            ]
+        },
+        
+        # 6: Country Check
+        {"signal": "country_match", "threshold": 0.5, "comparator": "gte"},
+        
+        # 7: Contact Info Block (OR)
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"}
+            ]
+        }
+    ]
+}
 
+TRANSITIVITY = True
 
 def run_clustering_step(**context):
     params = context["params"]
@@ -84,6 +169,8 @@ def run_clustering_step(**context):
         
         "/opt/airflow/spark/jobs/cluster/entity_resolution_job.py",
     ]
+    
+
 
     # Passing dynamic field names and weights as env vars
     env = os.environ.copy()
@@ -91,7 +178,8 @@ def run_clustering_step(**context):
     env["THRESHOLD_HIGH"] = str(params["threshold_high"])
     env["THRESHOLD_LOW"] = str(params["threshold_low"])
     env["PROVIDER_NAME"] = str(params["provider_name"])
-
+    env["MATCH_LOGIC"] = json.dumps(params.get("match_logic", DEFAULT_MATCH_LOGIC))
+    env["TRANSITIVITY"] = json.dumps(params.get("transitivity", TRANSITIVITY))
     result = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
     # Always print output so it appears in the logs regardless of success/fail
@@ -117,6 +205,8 @@ with DAG(
         "provider_name": Param(
             DEFAULT_CONFIG["provider_name"], type="string"
         ),  # Added Param
+        "match_logic": Param(DEFAULT_MATCH_LOGIC, type="object"),
+        "transitivity": Param(TRANSITIVITY, type="boolean"),
     },
     render_template_as_native_obj=True,
 ) as dag:
