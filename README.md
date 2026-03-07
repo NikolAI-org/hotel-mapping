@@ -30,6 +30,9 @@ A production-grade data pipeline leveraging **Apache Airflow**, **Apache Spark**
 
 ## 📋 Components
 
+### Scoring Logic Doc
+- `docs/SCORING_LOGIC.md` - concise reference for pair-scoring formulas, mismatch rules, and postal-code handling in `address_unit_score`
+
 ### Core Services
 - **Airflow**: Orchestration (Webserver, Scheduler, Worker, Postgres, Redis)
 - **Spark**: Processing (1 Master, 1 Worker) using Bitnami images

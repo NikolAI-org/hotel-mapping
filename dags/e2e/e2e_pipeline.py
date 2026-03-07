@@ -3,6 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
 from datetime import datetime, timedelta
 import subprocess
+import os
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
 SUPPLIERS = ["ean", "bookingcom",
@@ -10,6 +11,7 @@ SUPPLIERS = ["ean", "bookingcom",
              # "grnconnect",
              # "hobse",
              ]
+# SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = 'india'
 
 default_args = {
@@ -26,18 +28,27 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     """
     print(f"Running Spark job: {job_type} for {supplier}")
 
-    # Determine script and job name based on the job_type
+    # Determine script, job name, and parameters based on job_type
+    spark_env = None
     if job_type == "ingestion":
         script_path = '/opt/airflow/spark/jobs/ingestion/run_ingestion_job.py'
         job_name = f'ingest-{supplier.lower()}'
         source_path = f"s3a://data-lake/raw_input/{COUNTRY}/{supplier}/"
         param_key = '--source'
         param_value = source_path
-    else:
+    elif job_type == "scoring":
         script_path = '/opt/airflow/spark/jobs/ingestion/run_scoring_job.py'
         job_name = f'score-{supplier.lower()}'
         param_key = '--supplier'
         param_value = supplier
+    elif job_type == "clustering":
+        script_path = '/opt/airflow/spark/jobs/cluster/entity_resolution_job.py'
+        job_name = f'cluster-{supplier.lower()}'
+        param_key = None
+        param_value = None
+        spark_env = dict(os.environ, PROVIDER_NAME=supplier)
+    else:
+        raise ValueError(f"Unsupported job_type: {job_type}")
 
     # Build spark-submit command mimicking the working scripts
     spark_submit_cmd = [
@@ -59,15 +70,18 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         '--conf', 'spark.hadoop.fs.s3a.path.style.access=true',
         '--conf', 'spark.hadoop.fs.s3a.connection.ssl.enabled=false',
         script_path,
-        param_key, param_value
     ]
+
+    if param_key and param_value:
+        spark_submit_cmd.extend([param_key, param_value])
 
     print(f"Executing command: {' '.join(spark_submit_cmd)}")
 
     result = subprocess.run(
         spark_submit_cmd,
         capture_output=True,
-        text=True
+        text=True,
+        env=spark_env
     )
 
     print("STDOUT:")
@@ -113,14 +127,24 @@ with DAG(
             op_kwargs={'job_type': 'scoring', 'supplier': supplier}
         )
 
+        # Clustering Task
+        clustering_task = PythonOperator(
+            task_id=f"cluster_entities_{supplier.lower()}",
+            python_callable=run_spark_job_direct,
+            op_kwargs={'job_type': 'clustering', 'supplier': supplier}
+        )
+
         # 1. Connect the previous supplier's finish line to this supplier's start line
         previous_task >> ingest_task
 
         # 2. Connect the current supplier's ingestion to its scoring
         ingest_task >> scoring_task
 
-        # 3. Update the pointer so the next loop waits for this scoring_task to finish
-        previous_task = scoring_task
+        # 3. Connect scoring to clustering
+        scoring_task >> clustering_task
 
-    # Connect the very last scoring task to the end
+        # 4. Update pointer so next supplier waits for clustering completion
+        previous_task = clustering_task
+
+    # Connect the very last clustering task to the end
     previous_task >> end_pipeline

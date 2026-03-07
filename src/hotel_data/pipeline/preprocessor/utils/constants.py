@@ -19,7 +19,8 @@ STOP_WORDS = {
     'near', 'next to', 'close to', 'opposite', 'near to', 'located at', 'located in',
 
     # Directions (Usually Noise in loose matching, but debatable. Safer to remove)
-    'east', 'west', 'north', 'south', 'central', 'downtown',
+    #'east', 'west', 'north', 'south', 'central', 
+    'downtown',
 
     # Foreign Articles
     'el', 'la', 'los', 'las', 'del', 'de', 'y', 'le', 'les', 'du', 'des', 'et', 'chez',

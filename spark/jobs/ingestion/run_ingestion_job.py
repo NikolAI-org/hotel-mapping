@@ -12,10 +12,11 @@ from hotel_data.config.paths import BASE_DELTA_PATH, CATALOG_NAME, SCHEMA_NAME, 
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 from hotel_data.schema.input.preprocessor_schema import hotel_struct_schema
+from hotel_data.schema.input.preprocessor_schema import hotel_array_struct_schema
 from hotel_data.schema.input.preprocessor_schema import hotel_array_schema
 #from spark.jobs.ingestion.preprocessing_pipeline import PreprocessingPipeline
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
-from hotel_data.pipeline.preprocessor.processors.hotel_data_processor import HotelFlattenerProcessor
+from hotel_data.pipeline.preprocessor.processors.hotel_flattener_processor import HotelFlattenerProcessor
 from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor import MandatoryFieldsFilterProcessor
 from hotel_data.pipeline.preprocessor.processors.data_processing_pipeline import DataProcessingPipeline
 from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import AddressCombinerProcessor
@@ -59,8 +60,8 @@ def run_job():
     # 2. Read Raw JSON
     # recursiveFileLookup allows reading nested folders if needed
     #raw_df = spark.read.option("recursiveFileLookup", "true").json(source_path)
-    #hotel_schema = hotel_struct_schema
-    hotel_schema = hotel_array_schema
+    hotel_schema = hotel_struct_schema
+    #hotel_schema = hotel_array_schema
     reader = JSONStreamReader(source_path, schema=hotel_schema)
     raw_df = reader.read(spark)
 
