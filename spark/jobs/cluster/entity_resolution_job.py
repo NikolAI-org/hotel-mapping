@@ -33,11 +33,12 @@ def main():
 
     # These would typically come from Airflow DAG parameters
     current_provider = os.getenv('PROVIDER_NAME', 'hbose') 
+    print(f"🔎 EntityResolution provider: {current_provider}")
     TABLE_HISTORY_NAME = "comparison_audit_log"
     transitivity = os.getenv("TRANSITIVITY", "true").lower() == "true"
 
     config = {
-        'weights': json.loads(os.getenv('WEIGHTS', '{"name_score": 0.7, "addr_score": 0.3}')),
+        'weights': json.loads(os.getenv('WEIGHTS', '{"average_name_score": 0.7, "address_line1_score": 0.3}')),
         't_high': float(os.getenv('THRESHOLD_HIGH', 0.85)),
         't_low': float(os.getenv('THRESHOLD_LOW', 0.80)),
         'transitivity': transitivity,

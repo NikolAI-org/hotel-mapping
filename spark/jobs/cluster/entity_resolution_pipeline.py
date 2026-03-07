@@ -98,7 +98,13 @@ class EntityResolutionPipeline:
         ]
         
         # 4. Write EVERYTHING to the audit log
-        history_df = evaluated_pairs_df.select(*(base_cols + signal_cols))
+        history_df = evaluated_pairs_df.select(*(base_cols + signal_cols)).withColumn(
+            "failed_conditions",
+            F.coalesce(
+                F.col("failed_conditions").cast("array<string>"),
+                F.expr("CAST(array() AS array<string>)")
+            )
+        )
         manager.write_table(table_history, history_df, mode="append")
         
         # history_df = evaluated_pairs_df.select( # <--- THE FIX
@@ -174,8 +180,8 @@ class EntityResolutionPipeline:
     def append_failure_reasons(self, df: DataFrame, match_logic_config: dict) -> DataFrame:
         """Evaluates each top-level rule and appends a list of failure reasons."""
         if match_logic_config.get("operator", "").upper() != "AND":
-            # If the root isn't an AND, just return an empty array
-            return df.withColumn("failed_conditions", F.array())
+            # If root isn't AND (or config is empty), emit a typed empty array.
+            return df.withColumn("failed_conditions", F.expr("CAST(array() AS array<string>)"))
 
         failure_cols = []
         
@@ -190,7 +196,13 @@ class EntityResolutionPipeline:
             # 3. If the expression is FALSE, return the rule name. Otherwise, return NULL.
             failure_col = F.when(~rule_expr, F.lit(rule_name)).otherwise(F.lit(None))
             failure_cols.append(failure_col)
+
+        if not failure_cols:
+            return df.withColumn("failed_conditions", F.expr("CAST(array() AS array<string>)"))
             
         # Combine all failures into a single array and remove the NULLs
         # F.array_compact is available in Spark 3.4+ (You are on 3.5.3)
-        return df.withColumn("failed_conditions", F.array_compact(F.array(*failure_cols)))
+        return df.withColumn(
+            "failed_conditions",
+            F.array_compact(F.array(*failure_cols)).cast("array<string>")
+        )
