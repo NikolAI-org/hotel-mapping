@@ -10,25 +10,16 @@ class HotelFlattenerProcessor(BaseProcessor[DataFrame]):
         self.flattener = GenericFlattener(explode_arrays=explode_arrays)
 
     def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
-        # 1. Safely explode the old format.
-        # `explode_outer` ensures that NEW format rows (where 'hotels' is null) are NOT deleted!
+        # 1) Wrapped payload format: {"hotels": [...], "curatedHotels": [...]}.
+        # Flatten to one hotel record per row.
         if "hotels" in df.columns:
-            df = df.withColumn("exploded_hotel", F.explode_outer(F.col("hotels")))
-        else:
-            df = df.withColumn("exploded_hotel", F.lit(None))
+            df = df.withColumn("exploded_hotel", F.explode_outer(F.col("hotels"))) \
+                .select(F.col("exploded_hotel.*"))
 
-        # 2. The Coalesce Magic
-        # If exploded_hotel.id exists, it uses it. If it doesn't, it falls back to the root id.
-        df = df.withColumn("id", F.coalesce(F.col("exploded_hotel.id"), F.col("id"))) \
-            .withColumn("name", F.coalesce(F.col("exploded_hotel.name"), F.col("name"))) \
-            .withColumn("geoCode", F.coalesce(F.col("exploded_hotel.geoCode"), F.col("geoCode"))) \
-            .withColumn("contact", F.coalesce(F.col("exploded_hotel.contact"), F.col("contact"))) \
-            .withColumn("providerId", F.coalesce(F.col("exploded_hotel.providerId"), F.col("providerId"))) \
-            .withColumn("providerHotelId",
-                        F.coalesce(F.col("exploded_hotel.providerHotelId"), F.col("providerHotelId"))) \
-            .withColumn("providerName", F.coalesce(F.col("exploded_hotel.providerName"), F.col("providerName")))
+        # 2) Flat payload format already has hotel fields at root level.
+        # In this case, we use the DataFrame as-is.
 
-        # 3. Safe Root Extraction (Fixing the geoCode_lat issue)
+        # 3) Extract commonly used nested fields.
         df = df.withColumn("geoCode_lat", F.col("geoCode.lat")) \
             .withColumn("geoCode_long", F.col("geoCode.long")) \
             .withColumn("contact_address_line1", F.col("contact.address.line1")) \
@@ -41,4 +32,4 @@ class HotelFlattenerProcessor(BaseProcessor[DataFrame]):
             .withColumn("contact_fax", F.col("contact.fax")) \
             .withColumn("contact_emails", F.col("contact.emails"))
 
-        return df.drop("exploded_hotel", "hotels")
+        return df

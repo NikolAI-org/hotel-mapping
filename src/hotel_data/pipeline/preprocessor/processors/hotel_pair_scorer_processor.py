@@ -19,7 +19,7 @@ from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_ratin
 from pyspark.sql import functions as F
 from hotel_data.pipeline.scoring.blockers.geohash_blocker import GeoHashBlocker
 from hotel_data.pipeline.scoring.blockers.postal_blocker import PostalCodeBlocker
-from hotel_data.pipeline.scoring.scorers.mismatch_rules import unit_match_udf, type_match_udf
+from hotel_data.pipeline.scoring.scorers.mismatch_rules import unit_match_udf, type_match_udf, address_unit_match_udf
 
 
 def get_cosine_similarity_expr(col_a, col_b):
@@ -365,7 +365,12 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             unit_match_udf(F.col("name_i"), F.col("name_j"))
         ).withColumn(
             "address_unit_score",
-            unit_match_udf(F.col("contact_address_line1_i"), F.col("contact_address_line1_j"))
+            address_unit_match_udf(
+                F.col("contact_address_line1_i"),
+                F.col("contact_address_line1_j"),
+                F.col("contact_address_postalCode_i"),
+                F.col("contact_address_postalCode_j"),
+            )
         ).withColumn(
             # NEW: Intra-Supplier Match Flag
             # 1 = Same Supplier (Intra-duplicate)

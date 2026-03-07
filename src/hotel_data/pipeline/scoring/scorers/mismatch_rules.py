@@ -7,11 +7,17 @@ import pyspark.sql.types as T
 # 1. Property Type Match Score
 # ==========================================
 def _type_match_score(type_a: str, type_b: str) -> float:
-    # 1.0 = No conflict (Missing data gets benefit of the doubt)
+    # 0.5 = Neutral when type evidence is missing/unknown
     if not type_a or not type_b:
-        return 1.0
+        return 0.5
 
     a, b = type_a.strip().lower(), type_b.strip().lower()
+
+    # Treat unknown placeholders as missing/neutral type evidence.
+    unknown_markers = {"unknown", "na", "n/a", "null", "none", ""}
+    if a in unknown_markers or b in unknown_markers:
+        return 0.5
+
     if a == b:
         return 1.0
 
@@ -81,3 +87,46 @@ def _unit_match_score(name_a: str, name_b: str) -> float:
 
 
 unit_match_udf = F.udf(_unit_match_score, T.FloatType())
+
+
+# ==========================================
+# 3. Address Unit Match Score
+# ==========================================
+def _address_unit_match_score(addr_a: str, addr_b: str, postal_a: str = None, postal_b: str = None) -> float:
+    """
+    Address-specific unit scorer.
+
+    Returns:
+    - 0.0 when both addresses contain explicit numeric unit identifiers and they conflict
+      (e.g., house/building no 4 vs 121).
+        - 0.5 when only one side has explicit unit identifiers (partial evidence).
+        - 1.0 otherwise (neutral/no contradiction).
+    """
+    if not addr_a or not addr_b:
+        return 1.0
+
+    # Capture house/building/unit numbers, including ordinal-style tokens like "4rd".
+    # Postal codes are removed explicitly using dedicated postal columns.
+    num_pattern = r"\b(\d{1,6})(?:st|nd|rd|th)?\b"
+    nums_a = set(re.findall(num_pattern, addr_a.lower()))
+    nums_b = set(re.findall(num_pattern, addr_b.lower()))
+
+    # Remove known postal code numeric components so postal mismatches don't
+    # leak into this signal; postal consistency is handled by postal_code_match.
+    if postal_a:
+        nums_a -= set(re.findall(r"\d+", str(postal_a).lower()))
+    if postal_b:
+        nums_b -= set(re.findall(r"\d+", str(postal_b).lower()))
+
+    # Partial mismatch: one side has a unit-like number and the other does not.
+    if (nums_a and not nums_b) or (nums_b and not nums_a):
+        return 0.5
+
+    # Hard contradiction only when both sides have numbers and none overlap.
+    if nums_a and nums_b and nums_a.isdisjoint(nums_b):
+        return 0.0
+
+    return 1.0
+
+
+address_unit_match_udf = F.udf(_address_unit_match_score, T.FloatType())

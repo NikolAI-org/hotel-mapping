@@ -15,34 +15,36 @@ def smart_suffix_remover(name, address_line):
     if not name or not address_line:
         return name
 
-    # Normalize inputs for comparison
     name_tokens = name.lower().strip().split()
-    # Create a set of address tokens for fast lookup (remove punctuation)
     address_tokens = set(re.findall(r'\w+', address_line.lower()))
 
-    # Iterate from the END of the name backwards
-    # We use an index to know where to slice the name
     cut_off_index = len(name_tokens)
 
+    # Iterate from the END of the name backwards
     for i in range(len(name_tokens) - 1, -1, -1):
         token = name_tokens[i]
 
-        # SAFETY 1: Never strip the very first word (e.g. "The", "Grand")
-        if i == 0:
+        # 1. If the word is NOT in the address, stop stripping immediately.
+        # (e.g., if we hit "Hoxton" and it wasn't in the address, we keep it)
+        if token not in address_tokens:
             break
 
-        # SAFETY 2: Stop if we hit a Structure Word (e.g. "Hotel")
-        # This protects "Orchid Hotel" from becoming "Orchid" even if "Hotel" is in address
-        if token in ScoringConstants.LOW_INFO_TERMS:
-            break
+        # 2. THE NEW GUARDRAIL: Look at what will be left if we delete this token.
+        leftover_tokens = name_tokens[:i]
+        
+        # If the leftover string is empty OR consists ONLY of generic words (like "hotel"),
+        # we MUST stop stripping to protect the core identity.
+        is_only_generic_left = True
+        for leftover in leftover_tokens:
+            if leftover not in ScoringConstants.LOW_INFO_TERMS:
+                is_only_generic_left = False
+                break
+                
+        if not leftover_tokens or is_only_generic_left:
+            break # Stop! Don't delete the core identifier!
 
-        # ACTION: If token is in address, we mark it for removal
-        if token in address_tokens:
-            cut_off_index = i
-        else:
-            # If we find a word NOT in the address, we usually stop
-            # (e.g. "The Orchid Vile Parle" -> Vile/Parle match, Orchid doesn't -> Stop)
-            break
+        # 3. If it passed the guardrails, mark the index for deletion
+        cut_off_index = i
 
     return " ".join(name_tokens[:cut_off_index])
 
