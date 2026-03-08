@@ -4,15 +4,109 @@ from airflow.operators.empty import EmptyOperator
 from datetime import datetime, timedelta
 import subprocess
 import os
+import json
+import select
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
 SUPPLIERS = ["ean", "bookingcom",
-             "ratehawk",
+             #"ratehawk",
              # "grnconnect",
              # "hobse",
              ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = 'india'
+
+# Keep clustering defaults aligned with cluster DAG behavior.
+CLUSTER_CONFIG = {
+    "weights": {
+        "name_score_jaccard": 0.1,
+        "normalized_name_score_jaccard": 0.1,
+        "name_score_lcs": 0.1,
+        "normalized_name_score_lcs": 0.1,
+        "name_score_levenshtein": 0.1,
+        "normalized_name_score_levenshtein": 0.1,
+        "name_score_sbert": 0.1,
+        "normalized_name_score_sbert": 0.1,
+        "address_line1_score": 0.1,
+        "address_sbert_score": 0.1,
+        "star_ratings_score": 0.0,
+        "postal_code_match": 0.0,
+        "phone_match_score": 0.0,
+        "email_match_score": 0.0,
+        "fax_match_score": 0.0,
+    },
+    "threshold_high": 0.85,
+    "threshold_low": 0.80,
+    "transitivity": True,
+}
+
+DEFAULT_MATCH_LOGIC = {
+    "operator": "AND",
+    "rules": [
+        {"signal": "geo_distance_km", "threshold": 0.5, "comparator": "lte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_jaccard", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_lcs", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_levenshtein", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_sbert", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+            ],
+        },
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "address_line1_score", "threshold": 0.2, "comparator": "gte"},
+                {"signal": "address_sbert_score", "threshold": 0.2, "comparator": "gte"},
+            ],
+        },
+        {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"},
+            ],
+        },
+        {"signal": "country_match", "threshold": 0.5, "comparator": "gte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"},
+            ],
+        },
+    ],
+}
 
 default_args = {
     'owner': 'data-engineer',
@@ -46,7 +140,15 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         job_name = f'cluster-{supplier.lower()}'
         param_key = None
         param_value = None
-        spark_env = dict(os.environ, PROVIDER_NAME=supplier)
+        spark_env = dict(
+            os.environ,
+            PROVIDER_NAME=supplier,
+            WEIGHTS=json.dumps(CLUSTER_CONFIG["weights"]),
+            THRESHOLD_HIGH=str(CLUSTER_CONFIG["threshold_high"]),
+            THRESHOLD_LOW=str(CLUSTER_CONFIG["threshold_low"]),
+            MATCH_LOGIC=json.dumps(DEFAULT_MATCH_LOGIC),
+            TRANSITIVITY=json.dumps(CLUSTER_CONFIG["transitivity"]),
+        )
     else:
         raise ValueError(f"Unsupported job_type: {job_type}")
 
@@ -77,22 +179,36 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
 
     print(f"Executing command: {' '.join(spark_submit_cmd)}")
 
-    result = subprocess.run(
+    # Run in a polled loop so this PythonOperator keeps emitting heartbeats/logs
+    # and avoids zombie detection for long-running spark-submit tasks.
+    proc = subprocess.Popen(
         spark_submit_cmd,
-        capture_output=True,
+        env=spark_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        env=spark_env
+        bufsize=1,
     )
 
-    print("STDOUT:")
-    print(result.stdout)
+    heartbeat_every_sec = 60
+    while True:
+        if proc.stdout is not None:
+            ready, _, _ = select.select([proc.stdout], [], [], heartbeat_every_sec)
+            if ready:
+                line = proc.stdout.readline()
+                if line:
+                    print(line.rstrip())
 
-    if result.stderr:
-        print("STDERR:")
-        print(result.stderr)
+        rc = proc.poll()
+        if rc is not None:
+            if proc.stdout is not None:
+                for line in proc.stdout:
+                    print(line.rstrip())
+            if rc != 0:
+                raise Exception(f"Spark job failed with return code {rc}")
+            break
 
-    if result.returncode != 0:
-        raise Exception(f"Spark job failed with return code {result.returncode}")
+        print(f"Spark job '{job_name}' still running...")
 
     print(f"\nSpark job {job_name} completed successfully")
     return 0

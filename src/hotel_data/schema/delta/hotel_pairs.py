@@ -35,4 +35,8 @@ hotel_pairs_schema = StructType([
     StructField("phone_match_score", FloatType(), False),
     StructField("email_match_score", FloatType(), False),
     StructField("fax_match_score", FloatType(), False),
+    StructField("property_type_score", FloatType(), False),
+    StructField("name_unit_score", FloatType(), False),
+    StructField("address_unit_score", FloatType(), False),
+    StructField("supplier_score", IntegerType(), False)
 ])
