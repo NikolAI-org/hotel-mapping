@@ -38,5 +38,15 @@ hotel_pairs_schema = StructType([
     StructField("property_type_score", FloatType(), False),
     StructField("name_unit_score", FloatType(), False),
     StructField("address_unit_score", FloatType(), False),
-    StructField("supplier_score", IntegerType(), False)
+    StructField("supplier_score", IntegerType(), False),
+    StructField("providerName_i", StringType(), False),
+    StructField("providerName_j", StringType(), False),
+    StructField("type_i", StringType(), True),
+    StructField("type_j", StringType(), True),
+    StructField("name_score_containment", FloatType(), False),
+    StructField("normalized_name_score_containment", FloatType(), False),
+    StructField("average_name_score", FloatType(), False),
+    StructField("average_normalized_name_score", FloatType(), False),
+    StructField("pair_key_left", StringType(), False),
+    StructField("pair_key_right", StringType(), False)
 ])

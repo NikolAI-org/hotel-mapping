@@ -166,14 +166,23 @@ def process_batch(batch_df, batch_id, manager):
     ).drop("all_vecs")
 
     # Write results (The actual Action)
-    safe_write_table(manager, TABLE_HOTELS_NAME, valid_df)
+    safe_write_table(manager, TABLE_HOTELS_NAME, valid_df, key_columns=["providerHotelId"])
     safe_write_table(manager, TABLE_HOTELS_FAILED_NAME, invalid_df)
     print(f"✅ Batch {batch_id} completed.")
 
 
-def safe_write_table(manager, table_name, df):
+def safe_write_table(manager, table_name, df, key_columns=None):
     try:
-        # Avoid .isEmpty() check here; Delta will handle empty writes gracefully
+        # Use MERGE for upserts when key columns are provided.
+        if key_columns:
+            merge_df = df
+            for key_col in key_columns:
+                merge_df = merge_df.filter(F.col(key_col).isNotNull())
+            merge_df = merge_df.dropDuplicates(key_columns)
+            manager.merge_table(table_name, merge_df, key_columns)
+            return
+
+        # Fallback to standard write for tables without a stable business key.
         manager.write_table(table_name, df)
     except Exception as e:
         print(f"Error writing to {table_name}: {e}")
