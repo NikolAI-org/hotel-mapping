@@ -73,15 +73,20 @@ Rules include:
 - Base text different -> neutral `1.0`
 
 - `address_unit_score`
-Uses numeric unit conflict logic from address lines, with postal-code exclusion.
+Uses gradual numeric unit consistency from address lines, with postal-code exclusion.
 
 Rules:
 
 - Extract numeric unit tokens from `contact_address_line1_i/j`
 - Remove postal code numeric tokens using `contact_address_postalCode_i/j`
-- Both sides have numbers and disjoint -> `0.0`
-- Only one side has numbers -> `0.5`
-- Otherwise -> `1.0`
+- If neither side has numeric tokens (`{} vs {}`): `1.0`
+- If only one side has numeric tokens: `0.9`
+- If both sides have numeric tokens:
+Formula branches:
+- `nums_i == nums_j` -> `1.0`
+- `intersection(nums_i, nums_j) == {}` -> `0.0`
+- `nums_i ⊂ nums_j` or `nums_j ⊂ nums_i` -> `0.85`
+- otherwise partial overlap -> `( |intersection| / |union| ) * 0.9`
 
 Important:
 
@@ -119,7 +124,8 @@ Expected:
 Why:
 
 - Numeric unit tokens after postal removal are effectively `{4}` vs `{121}`.
-- Both sides have units and they are disjoint -> hard contradiction.
+- Both sides have units and they are disjoint.
+- Jaccard overlap = `0 / 2 = 0.0`.
 
 ### Example 2: One-sided unit evidence in address
 
@@ -131,14 +137,45 @@ Why:
 Expected:
 
 - `postal_code_match = 1.0`
-- `address_unit_score = 0.5`
+- `address_unit_score = 0.9`
 
 Why:
 
 - After postal removal, one side still has unit `{1}`, the other has no unit token.
-- One-sided numeric evidence -> partial mismatch (`0.5`).
+- One-sided numeric evidence is treated as ambiguous (`0.9`).
 
-### Example 3: Unknown property type
+### Example 3: Partial overlap gives gradual value
+
+- `contact_address_postalCode_i = 400051`
+- `contact_address_postalCode_j = null`
+- `contact_address_line1_i = 9 floor building no.11 ... 400051`
+- `contact_address_line1_j = building no- 11 shop no 819 ...`
+
+Expected:
+
+- Numeric tokens after postal removal: `{9, 11}` vs `{11, 819}`
+- `address_unit_score = (1 / 3) * 0.9 = 0.3`
+
+Why:
+
+- Overlap is partial, not full match.
+- Weighted partial-overlap score = `Jaccard * 0.9 = (1 / 3) * 0.9 = 0.3`.
+
+### Example 4: Subset relation is high but not perfect
+
+- `nums_i = {11}`
+- `nums_j = {11, 13}`
+
+Expected:
+
+- `address_unit_score = 0.85`
+
+Why:
+
+- One side is a strict subset of the other.
+- This is treated as near match with ambiguity, not perfect `1.0`.
+
+### Example 5: Unknown property type
 
 - `type_i = hotel`
 - `type_j = unknown`
@@ -152,7 +189,7 @@ Why:
 - `unknown`/`n/a`/`null` markers are treated as missing type evidence.
 - Missing/unknown type is neutral, not a hard mismatch.
 
-### Example 4: Normalized containment can be 1.0 for subset names
+### Example 6: Normalized containment can be 1.0 for subset names
 
 - `normalized_name_i = hotel o inn chhatrapati shivaji international airport`
 - `normalized_name_j = hotel inn-near international airport`
@@ -167,7 +204,7 @@ Why:
 - Token set of `j` becomes a subset of token set of `i`.
 - Containment uses `intersection / min_len`, so a full subset gives `1.0`.
 
-### Example 5: Type soft match vs hard mismatch
+### Example 7: Type soft match vs hard mismatch
 
 - Pair A: `type_i = hotel`, `type_j = resort` -> `property_type_score = 0.8`
 - Pair B: `type_i = condo`, `type_j = hotel` -> `property_type_score = 0.0`

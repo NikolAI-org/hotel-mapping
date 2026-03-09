@@ -1,4 +1,6 @@
 import re
+from typing import Set
+
 import pyspark.sql.functions as F
 import pyspark.sql.types as T
 
@@ -21,6 +23,10 @@ def _type_match_score(type_a: str, type_b: str) -> float:
     if a == b:
         return 1.0
 
+    # Catches "hotel" in "aparthotel" or "resort" in "golf resort"
+    if a in b or b in a:
+        return 0.8
+
     soft_matches = [
         {"hotel", "resort", "motel", "inn"},
         {"villa", "home", "chalet", "house"},
@@ -42,48 +48,97 @@ type_match_udf = F.udf(_type_match_score, T.FloatType())
 # ==========================================
 # 2. Unit / Phase Match Score
 # ==========================================
+_ROMAN_TOKEN_RE = re.compile(r"^(?=[ivxlcdm]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$")
+_NAME_UNIT_CONTEXT_RE = re.compile(
+    r"\b(?:phase|ph|block|blk|tower|twr|wing|unit|flat|apt|apartment|suite|room|villa|floor|flr|building|bldg)\s*[-#:]?\s*"
+    r"([a-z]|\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b"
+)
+_NAME_UNIT_STANDALONE_RE = re.compile(r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
+
+
+def _roman_to_int(token: str) -> int:
+    values = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+    total = 0
+    previous = 0
+    for char in reversed(token.lower()):
+        value = values[char]
+        if value < previous:
+            total -= value
+        else:
+            total += value
+            previous = value
+    return total
+
+
+def _normalize_unit_token(token: str) -> str:
+    token = token.strip().lower()
+    if not token:
+        return ""
+
+    # Normalize ordinal numbers (e.g., 4th -> 4).
+    ordinal_match = re.match(r"^(\d{1,4})(?:st|nd|rd|th)$", token)
+    if ordinal_match:
+        return ordinal_match.group(1)
+
+    if token.isdigit():
+        return token
+
+    if _ROMAN_TOKEN_RE.match(token):
+        return str(_roman_to_int(token))
+
+    if len(token) == 1 and token.isalpha():
+        return token.upper()
+
+    return ""
+
+
+def _extract_name_units(name: str) -> Set[str]:
+    text = name.lower()
+    tokens = []
+
+    # Contextual extraction captures single-letter units safely (e.g., "tower A").
+    tokens.extend(_NAME_UNIT_CONTEXT_RE.findall(text))
+
+    # Standalone extraction catches numeric/roman suffixes (e.g., "phase ii").
+    tokens.extend(_NAME_UNIT_STANDALONE_RE.findall(text))
+
+    normalized = {_normalize_unit_token(token) for token in tokens}
+    return {token for token in normalized if token}
+
+
 def _unit_match_score(name_a: str, name_b: str) -> float:
     if not name_a or not name_b:
         return 1.0
 
-    a, b = name_a.lower(), name_b.lower()
+    units_a = _extract_name_units(name_a)
+    units_b = _extract_name_units(name_b)
 
-    # THE FIX:
-    # \d{1,4} limits it to 4 digits. It completely ignores 5+ digit Zip Codes and Property IDs.
-    # Removed [a-z] to prevent "Collection O" from being treated as a unit.
-    unit_pattern = r'\b(\d{1,4}(?:st|nd|rd|th)?|i{1,3}|iv|v|vi{1,3}|ix|x{1,2})\b'
+    # No unit evidence on either side.
+    if not units_a and not units_b:
+        return 1.0
 
-    # Extract units
-    units_a = set(re.findall(unit_pattern, a))
-    units_b = set(re.findall(unit_pattern, b))
+    # One-sided unit evidence is ambiguous, not contradictory.
+    if (units_a and not units_b) or (units_b and not units_a):
+        return 0.9
 
-    # Strip units for base text
-    base_a = re.sub(unit_pattern, '', a)
-    base_b = re.sub(unit_pattern, '', b)
+    # Exact agreement.
+    if units_a == units_b:
+        return 1.0
 
-    # Clean remaining whitespaces/punctuation
-    base_a_clean = re.sub(r'[^a-z]', '', base_a)
-    base_b_clean = re.sub(r'[^a-z]', '', base_b)
+    # Hard conflict.
+    if units_a.isdisjoint(units_b):
+        return 0.0
 
-    # RULE 1: If the base textual names match...
-    if base_a_clean == base_b_clean:
-        if units_a and units_b:
-            if units_a == units_b:
-                return 1.0
-            # THE FIX: If B is just missing info that A has (or vice versa), it's NOT a contradiction!
-            elif units_a.issubset(units_b) or units_b.issubset(units_a):
-                return 0.9
-            else:
-                # Only veto if they share NO common truth (e.g., {1} vs {2})
-                return 0.0
+    # Subset relation.
+    if units_a.issubset(units_b) or units_b.issubset(units_a):
+        return 0.85
 
-        elif units_a or units_b:
-            return 0.9  # One has a unit, the other has absolutely none
-        else:
-            return 1.0
-
-    # RULE 2: If bases differ, bypass veto
-    return 1.0
+    # Partial overlap.
+    intersection = len(units_a & units_b)
+    union = len(units_a | units_b)
+    if union == 0:
+        return 1.0
+    return (float(intersection) / float(union)) * 0.9
 
 
 unit_match_udf = F.udf(_unit_match_score, T.FloatType())
@@ -96,11 +151,16 @@ def _address_unit_match_score(addr_a: str, addr_b: str, postal_a: str = None, po
     """
     Address-specific unit scorer.
 
-    Returns:
-    - 0.0 when both addresses contain explicit numeric unit identifiers and they conflict
-      (e.g., house/building no 4 vs 121).
-        - 0.5 when only one side has explicit unit identifiers (partial evidence).
-        - 1.0 otherwise (neutral/no contradiction).
+        Returns score in [0.0, 1.0] with explicit ambiguity handling.
+
+        Rules:
+        - {} vs {}: 1.0
+        - one-sided numeric evidence: 0.9
+        - both non-empty:
+            - exact match: 1.0
+            - disjoint: 0.0
+            - strict subset: 0.85
+            - otherwise partial overlap: Jaccard(nums_a, nums_b) * 0.9
     """
     if not addr_a or not addr_b:
         return 1.0
@@ -118,15 +178,32 @@ def _address_unit_match_score(addr_a: str, addr_b: str, postal_a: str = None, po
     if postal_b:
         nums_b -= set(re.findall(r"\d+", str(postal_b).lower()))
 
-    # Partial mismatch: one side has a unit-like number and the other does not.
-    if (nums_a and not nums_b) or (nums_b and not nums_a):
-        return 0.5
+    # No numeric evidence on either side.
+    if not nums_a and not nums_b:
+        return 1.0
 
-    # Hard contradiction only when both sides have numbers and none overlap.
-    if nums_a and nums_b and nums_a.isdisjoint(nums_b):
+    # One-sided numeric evidence: ambiguous, but not a hard conflict.
+    if (nums_a and not nums_b) or (nums_b and not nums_a):
+        return 0.9
+
+    # Exact agreement.
+    if nums_a == nums_b:
+        return 1.0
+
+    # Hard conflict.
+    if nums_a.isdisjoint(nums_b):
         return 0.0
 
-    return 1.0
+    # Subset relation: one side is a strict subset of the other.
+    if nums_a.issubset(nums_b) or nums_b.issubset(nums_a):
+        return 0.85
+
+    # Mixed partial overlap.
+    intersection = len(nums_a & nums_b)
+    union = len(nums_a | nums_b)
+    if union == 0:
+        return 1.0
+    return (float(intersection) / float(union)) * 0.9
 
 
 address_unit_match_udf = F.udf(_address_unit_match_score, T.FloatType())
