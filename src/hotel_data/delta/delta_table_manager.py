@@ -228,6 +228,9 @@ class DeltaTableManager:
         fq_name = self._get_table_identifier(table_name)
         path = self._get_table_path(table_name)
 
+        # Allow new columns from source DataFrames to evolve target schema during merge.
+        self.spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+
         if not self._table_exists(table_name):
             self.create_table(table_name, df=df)
 
