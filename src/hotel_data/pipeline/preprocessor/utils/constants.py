@@ -26,3 +26,12 @@ STOP_WORDS = {
     'el', 'la', 'los', 'las', 'del', 'de', 'y', 'le', 'les', 'du', 'des', 'et', 'chez',
     'der', 'die', 'das', 'und', 'il', 'i', 'gli', 'e', 'di'
 }
+
+STRONG_IDENTITY_TERMS = {
+    # Brand Identifiers
+    "crown", "inn", "express", "grand", "royal", "palace", "boutique", "collection",
+    # Directional/Location Modifiers
+    "north", "south", "east", "west", "central", "airport", "city", "town",
+    # Specific Descriptors
+    "green", "blue", "sea", "ocean", "valley", "hill"
+}

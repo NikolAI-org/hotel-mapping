@@ -6,6 +6,7 @@ from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_scor
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
     enhanced_name_scorer,
+    name_residual_udf,
     #get_numeric_penalty,
     JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO, CONTAINMENT_ALGO
 )
@@ -206,6 +207,13 @@ class CandidateScorer(BaseProcessor[DataFrame]):
                     F.col("name_score_levenshtein") +
                     F.col("name_score_sbert")
             ) / 4.0
+        ).withColumn(
+            "name_residual_score",
+            name_residual_udf(
+                F.col("normalized_name_i"),
+                F.col("normalized_name_j"),
+                F.col("normalized_name_score_jaccard") # Passing the existing score!
+            )
         ).withColumn(
             "average_normalized_name_score",
             (

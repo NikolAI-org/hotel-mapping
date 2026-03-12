@@ -10,6 +10,27 @@ from hotel_data.config.scoring_config import ScoringConstants
 #    'stay', 'house', 'home', 'club', 'cottage', 'camp'
 #}
 
+def normalize_real_estate_terms(text: str) -> str:
+    """
+    Injects spaces into squashed real-estate terminology to assist downstream tokenization.
+    """
+    if not text: 
+        return text
+    
+    text = text.lower()
+    
+    # FIX FOR CASE 2: "2bhk" -> "2 bhk"
+    # Safely splits digits from specific real estate words.
+    text = re.sub(r'(\d+)(bhk|bed|bedroom|bath)\b', r'\1 \2', text)
+    
+    # FIX FOR CASE 3: "bedroomiibath" -> "bedroom ii bath"
+    # Looks for a prefix term, a roman numeral (I, II, III, IV, V), and an optional suffix term.
+    text = re.sub(r'(bedroom|bed|bath|bhk)(i{1,3}|iv|v)(bath|bedroom|bhk)?\b', r'\1 \2 \3', text)
+    
+    # Clean up any accidental double spaces we just created
+    return re.sub(r'\s+', ' ', text).strip()
+
+normalize_real_estate_udf = udf(normalize_real_estate_terms, StringType())
 
 def smart_suffix_remover(name, address_line):
     if not name or not address_line:

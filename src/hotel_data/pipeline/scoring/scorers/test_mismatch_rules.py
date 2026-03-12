@@ -268,6 +268,17 @@ class TestUnitMatchScore(unittest.TestCase):
         name_j = "hotel 97 inn- andheri versova"
         self.assertEqual(_unit_match_score(name_i, name_j), 0.9)
 
+    def test_compact_bhk_number_conflict_is_hard_mismatch(self):
+        self.assertEqual(_unit_match_score("2bhk belapur", "1bhk belapur"), 0.0)
+
+    def test_compact_and_spaced_bhk_numbers_match(self):
+        self.assertEqual(_unit_match_score("2bhk belapur", "2 bhk belapur"), 1.0)
+
+    def test_user_case_private_bedroom_bath_variant_matches(self):
+        name_a = "1 private bedroom ii bath in a modern 2 bhk in powai"
+        name_b = "1 private bedroom in a modern 2 bhk in powai"
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.85)
+
 
 if __name__ == "__main__":
     unittest.main()

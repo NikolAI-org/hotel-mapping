@@ -26,6 +26,7 @@ from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import
 from hotel_data.pipeline.preprocessor.processors.stop_word_processor import StopWordProcessor
 from hotel_data.pipeline.preprocessor.processors.uid_processor import UIDProcessor
 from hotel_data.pipeline.preprocessor.processors.geo_hash_processor import GeoHashProcessor
+from hotel_data.pipeline.preprocessor.processors.text_preprocessor_processor import TextPreprocessorProcessor
 from hotel_data.pipeline.preprocessor.processors.sbert_vectorizer import compute_all_embeddings
 
 
@@ -142,6 +143,7 @@ def process_batch(batch_df, batch_id, manager):
     transformation_pipeline = DataProcessingPipeline([
         AddressCombinerProcessor(ADDRESS_FIELDS),
         LowercaseProcessor(EXCLUDE_LOWERCASE_FIELDS),
+        TextPreprocessorProcessor(),
         TimestampAppenderProcessor(),
         DefaultValueProcessor(critical_fields=CRITICAL_FIELDS),
         NameFormatterProcessor(ADDRESS_FIELDS),

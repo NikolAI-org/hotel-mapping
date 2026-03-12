@@ -10,6 +10,7 @@ from pyspark.sql.functions import (
 )
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+from hotel_data.pipeline.preprocessor.processors.smart_cleaner import normalize_real_estate_udf
 
 class AddressCombinerProcessor(BaseProcessor[DataFrame]):
     def __init__(self, address_fields: list[str], output_col="combined_address"):
@@ -28,6 +29,8 @@ class AddressCombinerProcessor(BaseProcessor[DataFrame]):
                 )
             )
         )
+
+        combined_address_expr = normalize_real_estate_udf(combined_address_expr)
         
         # Step 2: combine name + address (with delimiter)
         combined_entity_expr = concat_ws(

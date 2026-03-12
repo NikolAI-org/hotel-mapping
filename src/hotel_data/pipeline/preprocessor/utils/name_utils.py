@@ -1,13 +1,14 @@
 import re
 from fuzzywuzzy import fuzz
-from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES
+from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES, STRONG_IDENTITY_TERMS
 from hotel_data.config.scoring_config import ScoringConstants
+import pyspark.sql.functions as F
+import pyspark.sql.types as T
 
 JACCARD_ALGO = "jaccard"
 LCS_ALGO = "lcs"
 LEVENSHTEIN_ALGO = "levenshtein"
 CONTAINMENT_ALGO = "containment"
-
 
 def extract_units(text):
     """Extracts critical unit identifiers: Numbers, Roman Numerals, Single Letters"""
@@ -234,3 +235,46 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
 
     # Ensure score doesn't drop below zero
     return max(0.0, final_score)
+
+def _name_residual_score(name_a: str, name_b: str, jaccard_score: float) -> float:
+    """
+    Penalizes highly similar strings that conflict on critical identity terms.
+    """
+    # 1. Safe default for missing data
+    if not name_a or not name_b or jaccard_score is None:
+        return 1.0
+
+    # 2. THE OPTIMIZATION: Only inspect if Jaccard says they are highly similar
+    if float(jaccard_score) < 0.5:
+        return 1.0
+
+    # 3. Clean and Tokenize
+    def get_clean_set(text):
+        text = text.lower().replace(',', ' ').replace('-', ' ').replace('.', ' ')
+        return {t for t in text.split() if t not in STOP_WORDS and t.isalnum()}
+
+    set_a = get_clean_set(name_a)
+    set_b = get_clean_set(name_b)
+
+    # 4. Find the Residuals (The Leftovers)
+    intersection = set_a.intersection(set_b)
+    residual_a = set_a - intersection
+    residual_b = set_b - intersection
+
+    # 5. Extract only the Strong Terms from the leftovers
+    strong_res_a = residual_a.intersection(STRONG_IDENTITY_TERMS)
+    strong_res_b = residual_b.intersection(STRONG_IDENTITY_TERMS)
+
+    # CASE 1: Hard Conflict (e.g., Crown vs Inn)
+    if strong_res_a and strong_res_b and strong_res_a != strong_res_b:
+        return 0.0  # VETO
+
+    # CASE 4: One-Sided Modifier (e.g., South vs [Missing])
+    if (strong_res_a and not strong_res_b) or (strong_res_b and not strong_res_a):
+        return 0.9  # HEAVY PENALTY
+
+    # Safe - The leftovers were harmless words (like "near", "building")
+    return 1.0
+
+# Register the UDF
+name_residual_udf = F.udf(_name_residual_score, T.FloatType())

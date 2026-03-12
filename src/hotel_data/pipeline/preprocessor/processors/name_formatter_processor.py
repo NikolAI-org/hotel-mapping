@@ -6,7 +6,7 @@ from pyspark.sql.functions import col, trim, regexp_replace, udf
 from pyspark.sql.types import StringType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
-from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_udf
+from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_udf, normalize_real_estate_udf
 from hotel_data.config.scoring_config import ScoringConstants
 
 def _make_dynamic_cleaner(address_count: int):
@@ -99,7 +99,10 @@ class NameFormatterProcessor(BaseProcessor[DataFrame]):
         # 2) Apply existing smart_suffix_udf
         cleaned_col = smart_suffix_udf(cleaned_col, col("contact_address_line1"))
 
-        # 3) Final whitespace normalization
+        # 3) Normalize real-estate tokens (e.g., "2bhk" -> "2 bhk")
+        cleaned_col = normalize_real_estate_udf(cleaned_col)
+
+        # 4) Final whitespace normalization
         cleaned_col = trim(regexp_replace(cleaned_col, r"\s+", " "))
 
         return df.withColumn(self.output_col, cleaned_col)
