@@ -21,7 +21,8 @@ class EntityResolutionPipeline:
         # 1. Load Data & SHIELD AGAINST DUPLICATES
         new_hotels_df = manager.read_table(table_hotels) \
             .filter(F.col("providerName") == current_provider) \
-            .dropDuplicates(["uid"])
+            .dropDuplicates(["uid"]) \
+            .limit(100)
             
         new_hotels_df.cache()
         new_hotels_df.count() 
