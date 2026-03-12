@@ -13,15 +13,16 @@ class EntityResolutionPipeline:
         self.scorer = PairScorer(config['weights'], config['t_high'], config['t_low'])
         # Pass a standard Python logger
         import logging
-        transitity = config.get('transitivity')
-        self.resolver = FlexibleClustering(spark, transitivity_enabled=True)
+        transitity = config.get('transitivity', True)
+        self.resolver = FlexibleClustering(spark, transitivity_enabled=transitity)
         self.match_logic_config = match_logic_config
 
     def run(self, manager, table_hotels, table_pairs, table_output, table_history, current_provider):
         # 1. Load Data & SHIELD AGAINST DUPLICATES
         new_hotels_df = manager.read_table(table_hotels) \
             .filter(F.col("providerName") == current_provider) \
-            .dropDuplicates(["uid"])
+            .dropDuplicates(["uid"]) \
+            .limit(100)
             
         new_hotels_df.cache()
         new_hotels_df.count() 
@@ -107,31 +108,77 @@ class EntityResolutionPipeline:
         )
         manager.write_table(table_history, history_df, mode="append")
         
-        # history_df = evaluated_pairs_df.select( # <--- THE FIX
-        #     F.col("uid_i").alias("hotel_id"), F.col("name_i").alias("hotel_name"),
-        #     F.col("uid_j").alias("compared_with_id"), F.col("name_j").alias("compared_with_name"),
-        #     F.col("composite_score").alias("score"), F.col("classification").alias("status"),
-        #     F.col("is_matched"), F.col("geo_distance_km"),
-        #     F.current_timestamp().alias("comparison_at")
-        # )
-        # manager.write_table(table_history, history_df, mode="append")
-
-        # match_expr = self.build_match_expression(self.match_logic_config)
-        # evaluated_pairs_df = scored_pairs.withColumn("is_matched", match_expr)
-        
-        # Form/Merge Clusters
+        # ---------------------------------------------------------
+        # 4. Form/Merge Clusters FIRST to determine final assignments
+        # ---------------------------------------------------------
         if not manager._table_exists(table_output):
-            output_df = self.resolver.cluster(new_hotels_df, evaluated_pairs_df, existing_clusters_df=None)
-            
-            # Ironclad Deduplication before writing
-            clean_output = output_df.dropDuplicates(["uid"])
-            manager.create_table(table_output, df=clean_output.select("cluster_id", "name", "uid", "providerName"))
+            existing_clusters_df = None
         else:
             existing_clusters_df = manager.read_table(table_output)
-            output_df = self.resolver.cluster(new_hotels_df, evaluated_pairs_df, existing_clusters_df)
             
-            # Ironclad Deduplication before writing
-            clean_output = output_df.dropDuplicates(["uid"])
+        output_df = self.resolver.cluster(new_hotels_df, evaluated_pairs_df, existing_clusters_df)
+        
+        # ---------------------------------------------------------
+        # 5. Build a unified UID -> Cluster ID mapping for the audit
+        # ---------------------------------------------------------        
+        new_mapping = output_df.select("uid", "cluster_id")
+        if existing_clusters_df is not None:  # <--- FIXED HERE
+            old_mapping = existing_clusters_df.select("uid", "cluster_id")
+            full_mapping = new_mapping.union(old_mapping).dropDuplicates(["uid"])
+        else:
+            full_mapping = new_mapping
+        # ---------------------------------------------------------
+        # 6. Flag Transitivity Issues 
+        # (Matched by logic, but assigned to different clusters)
+        # ---------------------------------------------------------
+        evaluated_pairs_df = evaluated_pairs_df \
+            .join(full_mapping.withColumnRenamed("cluster_id", "cluster_id_i"), 
+                  evaluated_pairs_df.uid_i == full_mapping.uid, "left").drop("uid") \
+            .join(full_mapping.withColumnRenamed("cluster_id", "cluster_id_j"), 
+                  evaluated_pairs_df.uid_j == full_mapping.uid, "left").drop("uid")
+                  
+        evaluated_pairs_df = evaluated_pairs_df.withColumn(
+            "transitivity_issue",
+            F.when(
+                (F.col("is_matched") == True) & (F.col("cluster_id_i") != F.col("cluster_id_j")), 
+                True
+            ).otherwise(False)
+        )
+
+        # ---------------------------------------------------------
+        # 7. Update Base Columns for Audit Log
+        # ---------------------------------------------------------
+        base_cols = [
+            F.col("uid_i").alias("hotel_id"), F.col("name_i").alias("hotel_name"),
+            F.col("uid_j").alias("compared_with_id"), F.col("name_j").alias("compared_with_name"),
+            F.col("composite_score").alias("score"), F.col("classification").alias("status"),
+            F.col("is_matched"), 
+            F.col("failed_conditions"),
+            F.col("transitivity_issue"), # <-- New Flag
+            F.col("cluster_id_i"),       # <-- Context for debugging
+            F.col("cluster_id_j"),       # <-- Context for debugging
+            F.current_timestamp().alias("comparison_at")
+        ]
+        
+        # ---------------------------------------------------------
+        # 8. Write EVERYTHING to the audit log
+        # ---------------------------------------------------------
+        history_df = evaluated_pairs_df.select(*(base_cols + signal_cols)).withColumn(
+            "failed_conditions",
+            F.coalesce(
+                F.col("failed_conditions").cast("array<string>"),
+                F.expr("CAST(array() AS array<string>)")
+            )
+        )
+        manager.write_table(table_history, history_df, mode="append")
+        
+        # ---------------------------------------------------------
+        # 9. Write final clusters to the output table
+        # ---------------------------------------------------------
+        clean_output = output_df.dropDuplicates(["uid"])
+        if existing_clusters_df is None:  # <--- FIXED HERE
+            manager.create_table(table_output, df=clean_output.select("cluster_id", "name", "uid", "providerName"))
+        else:
             manager.merge_table(
                 table_name=table_output,
                 df=clean_output.select("cluster_id", "name", "uid", "providerName"),

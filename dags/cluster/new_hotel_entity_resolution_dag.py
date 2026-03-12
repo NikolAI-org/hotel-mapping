@@ -167,6 +167,9 @@ def run_clustering_step(**context):
         "--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem",
         "--conf", "spark.hadoop.fs.s3a.connection.ssl.enabled=false", # If MinIO is on HTTP
         
+        "--executor-memory", "2G",
+        "--driver-memory", "2G",
+        
         "/opt/airflow/spark/jobs/cluster/entity_resolution_job.py",
     ]
     
