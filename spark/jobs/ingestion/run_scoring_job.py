@@ -1,3 +1,7 @@
+from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import HotelPairScorerProcessor
+from pyspark.sql import functions as F
+from pyspark.sql import SparkSession
+from pyspark.sql.types import ArrayType, StringType
 import sys
 import argparse
 
@@ -5,14 +9,6 @@ import argparse
 # fmt: off
 sys.path.append('/opt/airflow')
 # fmt: on
-
-from pyspark.sql.types import ArrayType, StringType
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-
-from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import HotelPairScorerProcessor
-from hotel_data.delta.delta_table_manager import DeltaTableManager
-from hotel_data.config.paths import BASE_DELTA_PATH, CATALOG_NAME, SCHEMA_NAME, TABLE_HOTELS_PAIRS_NAME
 
 
 def create_spark_session(app_name: str) -> SparkSession:
@@ -65,9 +61,7 @@ def run_job():
     # pair_scorer = CandidateScorer()
     scored_pairs_df = pair_scorer.process(challenger_df, anchor_df)
 
-    # coalesce avoids a full shuffle stage (unlike repartition), preventing
-    # BypassMergeSortShuffleWriter from filling /tmp/spark-tmp with intermediate files.
-    scored_pairs_df = scored_pairs_df.coalesce(10)
+    scored_pairs_df = scored_pairs_df.repartition(100)
 
     print(f"--- Upserting into Delta Table: {TABLE_HOTELS_PAIRS_NAME} ---")
     scored_pairs_df = scored_pairs_df.filter(
@@ -76,10 +70,6 @@ def run_job():
     )
 
     # Build order-independent pair keys so (A,B) and (B,A) merge into one record.
-    # dropDuplicates is intentionally omitted here: the scorer already guarantees
-    # unique pairs via the (uid_i < uid_j) filter for intra-provider pairs and the
-    # single-provider challenger design for inter-provider pairs. Adding dropDuplicates
-    # triggered a full wide-schema shuffle (Stage 25) that exhausted /tmp/spark-tmp.
     scored_pairs_df = scored_pairs_df.withColumn(
         "pair_key_i",
         F.concat_ws(":", F.col("providerName_i"), F.col("providerHotelId_i"))
@@ -92,7 +82,7 @@ def run_job():
     ).withColumn(
         "pair_key_right",
         F.greatest(F.col("pair_key_i"), F.col("pair_key_j"))
-    ).drop("pair_key_i", "pair_key_j")
+    ).dropDuplicates(["pair_key_left", "pair_key_right"]).drop("pair_key_i", "pair_key_j")
 
     manager.merge_table(
         table_name=TABLE_HOTELS_PAIRS_NAME,

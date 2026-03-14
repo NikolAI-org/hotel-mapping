@@ -7,6 +7,7 @@ from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor impo
 from hotel_data.pipeline.preprocessor.processors.default_value_processor import DefaultValueProcessor
 from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import AddressCombinerProcessor
 from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
+from hotel_data.pipeline.preprocessor.processors.text_preprocessor_processor import TextPreprocessorProcessor
 from hotel_data.pipeline.preprocessor.processors.geo_hash_processor import GeoHashProcessor
 #from hotel_data.pipeline.preprocessor.processors.sbert_vectorizer import compute_all_embeddings
 from hotel_data.pipeline.preprocessor.processors.timestamp_appender_processor import TimestampAppenderProcessor
@@ -31,6 +32,8 @@ class PreprocessingPipeline:
         self.address_combiner = AddressCombinerProcessor(
             address_fields=["contact_address_line1", "contact_address_city_name", "contact_address_country_name"]
         )
+
+        self.text_preprocessor = TextPreprocessorProcessor()
 
         # 5. Normalize Name (Remove stop words/address parts)
         self.name_normalizer = NameFormatterProcessor(
@@ -66,6 +69,8 @@ class PreprocessingPipeline:
 
         print(">> [5/8] Normalizing Hotel Names...")
         df = self.name_normalizer.process(df)
+
+        df = self.text_preprocessor.process(df)
 
         print(">> [6/8] Calculating GeoHashes...")
         df = self.geohasher.process(df)

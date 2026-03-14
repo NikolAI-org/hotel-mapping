@@ -44,6 +44,9 @@ flattened_hotel_schema = StructType([
     
     # New fields
     StructField("combined_address", StringType(), True),
+    StructField("uid", StringType(), True),
+    StructField("name_preprocessed", StringType(), True),
+    StructField("combined_address_preprocessed", StringType(), True),
     StructField("address_embedding", ArrayType(FloatType()), True),
     StructField("processing_time_utc", TimestampType(), True),
     StructField("original_message", StringType(), True)

@@ -1,3 +1,4 @@
+from hotel_data.pipeline.scoring.scorers.mismatch_rules import _address_unit_match_score, _type_match_score, _unit_match_score
 import sys
 import types
 import unittest
@@ -11,7 +12,8 @@ if "pyspark.sql" not in sys.modules:
     sys.modules["pyspark.sql"] = types.ModuleType("pyspark.sql")
 
 if "pyspark.sql.functions" not in sys.modules:
-    sys.modules["pyspark.sql.functions"] = types.ModuleType("pyspark.sql.functions")
+    sys.modules["pyspark.sql.functions"] = types.ModuleType(
+        "pyspark.sql.functions")
 
 if "pyspark.sql.types" not in sys.modules:
     sys.modules["pyspark.sql.types"] = types.ModuleType("pyspark.sql.types")
@@ -28,8 +30,6 @@ if not hasattr(types_mod, "FloatType"):
     class _FloatType:
         pass
     types_mod.FloatType = _FloatType
-
-from hotel_data.pipeline.scoring.scorers.mismatch_rules import _address_unit_match_score, _type_match_score, _unit_match_score
 
 
 class TestTypeMatchScore(unittest.TestCase):
@@ -84,7 +84,8 @@ class TestAddressUnitMatchScore(unittest.TestCase):
         a = "kamal mansion, colaba, mumbai 400001"
         b = "kartar bhavan, colaba, mumbai 110001"
         # Postal digits must be removed using dedicated postal columns.
-        self.assertEqual(_address_unit_match_score(a, b, "400001", "110001"), 1.0)
+        self.assertEqual(_address_unit_match_score(
+            a, b, "400001", "110001"), 1.0)
 
     def test_house_and_postal_permutations_and_combinations(self):
         # Each row validates both A->B and B->A to cover permutations.
@@ -197,7 +198,8 @@ class TestAddressUnitMatchScore(unittest.TestCase):
 
     def test_one_sided_numeric_evidence_is_ambiguous(self):
         one_num = _address_unit_match_score("building no 11", "road bandra")
-        two_nums = _address_unit_match_score("9 floor building no 11", "road bandra")
+        two_nums = _address_unit_match_score(
+            "9 floor building no 11", "road bandra")
         self.assertAlmostEqual(one_num, 0.9, places=6)
         self.assertAlmostEqual(two_nums, 0.9, places=6)
 
@@ -225,7 +227,8 @@ class TestAddressUnitMatchScore(unittest.TestCase):
             "bandra east, mumbai, maharashtra 400051"
         )
         addr_b = "building no- 11 shop no 819, motilal nagar, road bandra"
-        self.assertAlmostEqual(_address_unit_match_score(addr_a, addr_b, "400051", None), 0.3, places=6)
+        self.assertAlmostEqual(_address_unit_match_score(
+            addr_a, addr_b, "400051", None), 0.3, places=6)
 
     def test_user_case_jankidevi_school_conflicting_numbers(self):
         # {91} vs {4} => hard conflict
@@ -242,31 +245,50 @@ class TestAddressUnitMatchScore(unittest.TestCase):
 
 class TestUnitMatchScore(unittest.TestCase):
     def test_no_unit_evidence_is_neutral_match(self):
-        self.assertEqual(_unit_match_score("hotel sunrise", "resort sunrise"), 1.0)
+        self.assertEqual(_unit_match_score(
+            "hotel sunrise", "resort sunrise"), 1.0)
 
     def test_base_name_is_ignored_for_conflicting_units(self):
-        self.assertEqual(_unit_match_score("hotel alpha phase 1", "resort beta phase 2"), 0.0)
+        self.assertEqual(_unit_match_score(
+            "hotel alpha phase 1", "resort beta phase 2"), 0.0)
 
     def test_roman_numeric_equivalence_matches(self):
-        self.assertEqual(_unit_match_score("hotel orchid phase ii", "hotel orchid phase 2"), 1.0)
+        self.assertEqual(_unit_match_score(
+            "hotel orchid phase ii", "hotel orchid phase 2"), 1.0)
 
     def test_contextual_single_letter_unit_matches(self):
-        self.assertEqual(_unit_match_score("tower a at green view", "tower A greenview"), 1.0)
+        self.assertEqual(_unit_match_score(
+            "tower a at green view", "tower A greenview"), 1.0)
 
     def test_one_sided_unit_evidence_is_ambiguous(self):
         self.assertEqual(_unit_match_score("hotel phase iii", "hotel"), 0.9)
 
     def test_subset_unit_evidence_uses_subset_weight(self):
-        self.assertEqual(_unit_match_score("phase 2 tower a", "phase ii"), 0.85)
+        self.assertEqual(_unit_match_score(
+            "phase 2 tower a", "phase ii"), 0.85)
 
     def test_partial_overlap_uses_weighted_jaccard(self):
-        score = _unit_match_score("phase 2 tower a wing b", "phase ii block b unit 9")
+        score = _unit_match_score(
+            "phase 2 tower a wing b", "phase ii block b unit 9")
         self.assertAlmostEqual(score, 0.45, places=6)
 
     def test_user_case_name_with_one_sided_numeric_unit(self):
         name_i = "hotel versova inn"
         name_j = "hotel 97 inn- andheri versova"
         self.assertEqual(_unit_match_score(name_i, name_j), 0.9)
+
+    def test_compact_bhk_number_conflict_is_hard_mismatch(self):
+        self.assertEqual(_unit_match_score(
+            "2bhk belapur", "1bhk belapur"), 0.0)
+
+    def test_compact_and_spaced_bhk_numbers_match(self):
+        self.assertEqual(_unit_match_score(
+            "2bhk belapur", "2 bhk belapur"), 1.0)
+
+    def test_user_case_private_bedroom_bath_variant_matches(self):
+        name_a = "1 private bedroom ii bath in a modern 2 bhk in powai"
+        name_b = "1 private bedroom in a modern 2 bhk in powai"
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.85)
 
 
 if __name__ == "__main__":

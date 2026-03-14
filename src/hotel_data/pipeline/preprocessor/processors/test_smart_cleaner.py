@@ -28,7 +28,7 @@ if "pyspark" not in sys.modules:
     sys.modules["pyspark.sql.functions"] = functions_mod
     sys.modules["pyspark.sql.types"] = types_mod
 
-from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_remover
+from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_remover, normalize_real_estate_terms
 
 
 class TestSmartSuffixRemover(unittest.TestCase):
@@ -57,6 +57,19 @@ class TestSmartSuffixRemover(unittest.TestCase):
 
         # No trailing token overlap, so the original name stays intact.
         self.assertEqual(smart_suffix_remover(name, address_line), "astros plaza hoxton")
+
+
+class TestNormalizeRealEstateTerms(unittest.TestCase):
+    def test_splits_digit_prefixed_units(self):
+        self.assertEqual(normalize_real_estate_terms("2bhk apartment"), "2 bhk apartment")
+
+    def test_splits_roman_numeral_units(self):
+        self.assertEqual(normalize_real_estate_terms("bedroomiibath"), "bedroom ii bath")
+        self.assertEqual(normalize_real_estate_terms("bedroomivbath"), "bedroom iv bath")
+
+    def test_preserves_none_and_empty(self):
+        self.assertIsNone(normalize_real_estate_terms(None))
+        self.assertEqual(normalize_real_estate_terms(""), "")
 
 
 if __name__ == "__main__":

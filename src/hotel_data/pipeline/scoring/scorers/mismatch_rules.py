@@ -48,12 +48,33 @@ type_match_udf = F.udf(_type_match_score, T.FloatType())
 # ==========================================
 # 2. Unit / Phase Match Score
 # ==========================================
-_ROMAN_TOKEN_RE = re.compile(r"^(?=[ivxlcdm]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$")
+_ROMAN_TOKEN_RE = re.compile(
+    r"^(?=[ivxlcdm]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$")
+
+# TYPED Inventory
+# Catches: "2 bhk", "ii bath", "1 bedroom", "bed 2", "bath iv"
+# Handles number first OR type first
+# 1A. Value-First Inventory (e.g., "2 bhk", "ii bath") - PRIORITY
+_TYPED_VAL_FIRST_RE = re.compile(
+    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*[-:]?\s*(bhk|beds?|bedrooms?|baths?|bathrooms?)\b"
+)
+
+# 1B. Type-First Inventory (e.g., "bed 2", "bath iv") - FALLBACK
+_TYPED_TYPE_FIRST_RE = re.compile(
+    r"\b(bhk|beds?|bedrooms?|baths?|bathrooms?)\s*[-:]?\s*(\d{1,4}|[ivxlcdm]{1,7})\b"
+)
+
+# General Context (UNTYPED)
 _NAME_UNIT_CONTEXT_RE = re.compile(
     r"\b(?:phase|ph|block|blk|tower|twr|wing|unit|flat|apt|apartment|suite|room|villa|floor|flr|building|bldg)\s*[-#:]?\s*"
     r"([a-z]|\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b"
 )
-_NAME_UNIT_STANDALONE_RE = re.compile(r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
+
+# Standalone (UNTYPED)
+_NAME_UNIT_STANDALONE_RE = re.compile(
+    r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
+_NAME_UNIT_COMPACT_RE = re.compile(
+    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*(?:bhk|bed|bedroom|bath|beds|bedrooms|baths|bathrooms)\b")
 
 
 def _roman_to_int(token: str) -> int:
@@ -70,7 +91,7 @@ def _roman_to_int(token: str) -> int:
     return total
 
 
-def _normalize_unit_token(token: str) -> str:
+def _normalize_unit_token(token: str, allow_articles_as_units: bool = False) -> str:
     token = token.strip().lower()
     if not token:
         return ""
@@ -87,23 +108,86 @@ def _normalize_unit_token(token: str) -> str:
         return str(_roman_to_int(token))
 
     if len(token) == 1 and token.isalpha():
+        # Exclude article-like letters by default for standalone extraction,
+        # but allow them when they are captured from contextual unit phrases.
+        if token in {"a", "i"} and not allow_articles_as_units:
+            return ""
         return token.upper()
 
     return ""
 
 
+def _normalize_inventory_type(raw_type: str) -> str:
+    """Maps synonymous inventory terms to a single standard type to avoid false mismatch."""
+    t = raw_type.lower()
+    if "bath" in t:
+        return "bath"
+    if t in {"bhk", "bed", "beds", "bedroom", "bedrooms"}:
+        return "bed"
+    return "unknown"
+
+
 def _extract_name_units(name: str) -> Set[str]:
     text = name.lower()
     tokens = []
+    typed_tokens = []
+    consumed_spans = []
 
-    # Contextual extraction captures single-letter units safely (e.g., "tower A").
-    tokens.extend(_NAME_UNIT_CONTEXT_RE.findall(text))
+    # 1A. Extract Value-First Typed Inventory (Highest Priority)
+    for match in _TYPED_VAL_FIRST_RE.finditer(text):
+        val, typ = match.groups()
+        norm_val = _normalize_unit_token(val)
+        norm_type = _normalize_inventory_type(typ)
 
-    # Standalone extraction catches numeric/roman suffixes (e.g., "phase ii").
-    tokens.extend(_NAME_UNIT_STANDALONE_RE.findall(text))
+        if norm_val and norm_type != "unknown":
+            typed_tokens.append(f"{norm_type}:{norm_val}")
+            consumed_spans.append(match.span())
 
-    normalized = {_normalize_unit_token(token) for token in tokens}
-    return {token for token in normalized if token}
+    # 1B. Extract Type-First Typed Inventory (Fallback)
+    for match in _TYPED_TYPE_FIRST_RE.finditer(text):
+        # Only process if this text wasn't already consumed by Value-First!
+        # (This prevents "bedroom ii" from stealing the "ii" from "ii bath")
+        span = match.span()
+        overlap = any(start <= span[0] < end or start <
+                      span[1] <= end for start, end in consumed_spans)
+
+        if not overlap:
+            typ, val = match.groups()
+            norm_val = _normalize_unit_token(val)
+            norm_type = _normalize_inventory_type(typ)
+            if norm_val and norm_type != "unknown":
+                typed_tokens.append(f"{norm_type}:{norm_val}")
+
+    # 2. Contextual extraction (Captures letters like "Tower A")
+    context_tokens = _NAME_UNIT_CONTEXT_RE.findall(text)
+    tokens.extend(context_tokens)
+
+    # 3. Standalone extraction (Naturally captures raw numbers like the "2" from "2 bhk")
+    standalone_tokens = _NAME_UNIT_STANDALONE_RE.findall(text)
+    tokens.extend(standalone_tokens)
+
+    # 4. Compact extraction keeps untyped numeric evidence for forms like "2bhk".
+    compact_tokens = _NAME_UNIT_COMPACT_RE.findall(text)
+    tokens.extend(compact_tokens)
+
+    # Normalize contextual tokens with article-like letters allowed (e.g., tower a).
+    normalized_context = {
+        _normalize_unit_token(token, allow_articles_as_units=True)
+        for token in context_tokens
+    }
+
+    # Normalize standalone + compact tokens with strict filtering.
+    normalized_other = {
+        _normalize_unit_token(token)
+        for token in (standalone_tokens + compact_tokens)
+    }
+
+    normalized_untyped = normalized_context.union(normalized_other)
+
+    # Combine both sets. (Empty strings are dropped)
+    final_set = {t for t in normalized_untyped if t}.union(set(typed_tokens))
+
+    return final_set
 
 
 def _unit_match_score(name_a: str, name_b: str) -> float:
