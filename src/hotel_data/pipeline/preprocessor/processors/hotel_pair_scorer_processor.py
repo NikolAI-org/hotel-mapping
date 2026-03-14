@@ -10,6 +10,7 @@ from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
     enhanced_name_scorer,
     name_residual_udf,
+    bigram_jaccard,
     # get_numeric_penalty,
     JACCARD_ALGO, LCS_ALGO, LEVENSHTEIN_ALGO, CONTAINMENT_ALGO
 )
@@ -453,5 +454,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
 
         cols_to_remove = ["geoCode_lat_i", "geoCode_lat_j", "geoCode_long_i", "geoCode_long_j", "geo_intersection", "starRating_i", "starRating_j", "name_embedding_i", "name_embedding_j", "normalized_name_embedding_i", "normalized_name_embedding_j", "contact_address_line1_i", "contact_address_line1_j", "contact_address_postalCode_i", "contact_address_postalCode_j", "contact_address_country_name_i",
                           "contact_address_country_name_j", "address_embedding_i", "address_embedding_j", "contact_phones_i", "contact_phones_j", "contact_fax_i", "contact_fax_j", "contact_emails_i", "contact_emails_j", "norm_phones_i", "norm_phones_j", "norm_faxes_i", "norm_faxes_j", "name_preprocessed_i", "name_preprocessed_j", "combined_address_preprocessed_i", "combined_address_preprocessed_j"]
-        required_df = pairs_with_ratings_score.drop(*cols_to_remove)
+        required_df = pairs_with_ratings_score.withColumn(
+            "overall_pair_score",
+            build_overall_pair_score_expr()
+        ).drop(*cols_to_remove)
         return required_df
