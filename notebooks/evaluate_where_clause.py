@@ -24,53 +24,87 @@ import pandas as pd
 # ─────────────────────────────────────────────────────────────────────────────
 
 CSV_PATH = '/Users/nakul.patil/Downloads/hotels.csv'
+FP_CSV_PATH = '/Users/nakul.patil/Downloads/hotels_fp_aggressive_mapping.csv'
+FN_CSV_PATH = '/Users/nakul.patil/Downloads/hotels_fn_loose_mapping.csv'
 
-WHERE_CLAUSE = """
-    (name_score_containment >= 0.9500
-        AND normalized_name_score_containment >= 0.7000
-        AND name_score_levenshtein >= 0.4900
-        AND normalized_name_score_jaccard >= 0.1500
-        AND name_unit_score >= 0.9500)
-    OR (name_score_sbert >= 0.9500
-        AND name_unit_score >= 0.0500)
-    OR (average_name_score >= 0.5800
-        AND normalized_name_score_containment >= 0.9000)
-    OR (name_score_sbert >= 0.8500
-        AND normalized_name_score_containment >= 0.9000)
-    OR (name_score_sbert >= 0.8500
-        AND name_score_containment >= 0.9500)
-    OR (name_score_jaccard >= 0.8100
-        AND name_unit_score >= 0.0500)
-"""
+# Ordered columns to place at the left of FP/FN CSVs (remaining cols appended after)
+EXPORT_LEAD_COLS = [
+    'id_i', 'id_j',
+    'providerName_i', 'providerName_j',
+    'providerHotelId_i', 'providerHotelId_j',
+    'name_i', 'name_j',
+    'normalized_name_i', 'normalized_name_j',
+    'type_i', 'type_j',
+    'geo_distance_km',
+    'starRating_i', 'starRating_j',
+    'contact_address_line1_i', 'contact_address_line1_j',
+    'contact_address_postalCode_i', 'contact_address_postalCode_j',
+    'contact_address_city_name_i', 'contact_address_city_name_j',
+    'contact_address_state_name_i', 'contact_address_state_name_j',
+    'overall_pair_score',
+    'name_score_containment', 'normalized_name_score_containment',
+    'name_score_jaccard', 'normalized_name_score_jaccard',
+    'name_score_lcs', 'normalized_name_score_lcs',
+    'name_score_levenshtein', 'normalized_name_score_levenshtein',
+    'name_score_sbert', 'normalized_name_score_sbert',
+    'average_name_score', 'average_normalized_name_score',
+    'address_line1_score', 'postal_code_match', 'country_match',
+    'address_sbert_score', 'phone_match_score', 'email_match_score',
+    'fax_match_score', 'property_type_score', 'name_unit_score',
+    'address_unit_score', 'supplier_score', 'star_ratings_score',
+]
+
+# WHERE_CLAUSE = """
+#     (name_score_containment >= 0.9500
+#         AND normalized_name_score_containment >= 0.7000
+#         AND name_score_levenshtein >= 0.4900
+#         AND normalized_name_score_jaccard >= 0.1500
+#         AND name_unit_score >= 0.9500)
+#     OR (name_score_sbert >= 0.9500
+#         AND name_unit_score >= 0.0500)
+#     OR (average_name_score >= 0.5800
+#         AND normalized_name_score_containment >= 0.9000)
+#     OR (name_score_sbert >= 0.8500
+#         AND normalized_name_score_containment >= 0.9000)
+#     OR (name_score_sbert >= 0.8500
+#         AND name_score_containment >= 0.9500)
+#     OR (name_score_jaccard >= 0.8100
+#         AND name_unit_score >= 0.0500)
+# """
 
 WHERE_CLAUSE = """
 (
-    (name_score_containment >= 0.95 OR name_score_jaccard >= 0.9 OR name_score_lcs >= 0.9 OR name_score_levenshtein >= 0.9 OR name_score_sbert >= 0.9)
+    (name_score_jaccard >= 0.9 OR name_score_lcs >= 0.9 OR name_score_levenshtein >= 0.95 OR name_score_sbert >= 0.9)
     OR
     (normalized_name_score_jaccard >= 0.95 OR normalized_name_score_lcs >= 0.95 OR normalized_name_score_levenshtein >= 0.95 OR normalized_name_score_sbert >= 0.95)
     OR
     (average_name_score >= 0.8 OR average_normalized_name_score >= 0.9)
     OR
-    (normalized_name_score_containment >= 1 AND name_score_sbert >= 0.75 AND geo_distance_km <= 0.2)
+    (normalized_name_score_containment >= 1 AND ((name_score_sbert >= 0.75 AND geo_distance_km <= 0.2) OR (name_score_sbert >= 0.7 AND geo_distance_km <= 0.1)))
+    OR
+    (name_score_containment >= 0.95 AND normalized_name_score_containment >= 0.95 AND star_ratings_score >= 0.8 AND geo_distance_km <= 0.2)
 )
 AND
     (
         address_line1_score >= 0.5 OR address_sbert_score >= 0.5 OR geo_distance_km <= 0.2
     )
 AND
-    (property_type_score >= 0.8)
+    (property_type_score >= 0.5)
 AND
-    (name_unit_score >= 0.5 AND address_unit_score >= 0.5)
+    (name_unit_score >= 0.5)
+AND 
+    (address_unit_score >= 0.5 OR (address_unit_score >= 0.25 AND geo_distance_km <= 0.1))
 """
 
 # How many FP / FN samples to print
-N_FP_SAMPLES = 5
-N_FN_SAMPLES = 5
+N_FP_SAMPLES = 0
+
+N_FN_SAMPLES = 20
 
 # How many FP / FN records to skip before printing.
 # Increase by N_FP_SAMPLES / N_FN_SAMPLES each run to page through batches.
-N_FP_SKIP = 20
-N_FN_SKIP = 20
+N_FP_SKIP = 5
+N_FN_SKIP = 0
 
 # Feature columns (used for suggestions). Script auto-detects these from the
 # CSV, but you can hard-code them here if needed.
@@ -447,6 +481,19 @@ def main():
             print("  Suggested fix (add OR branch to capture this FN):")
             for line in suggest_fix_for_fn(row, feat_cols, df, y_true, mask.values):
                 print(line)
+
+    # ── Export FP / FN CSVs ───────────────────────────────────────────────
+    def export_cases(cases_df: pd.DataFrame, path: str, label: str):
+        # Build column order: lead cols that exist, then remaining cols
+        lead = [c for c in EXPORT_LEAD_COLS if c in cases_df.columns]
+        rest = [c for c in cases_df.columns if c not in set(lead)]
+        ordered = cases_df[lead + rest]
+        ordered.to_csv(path, index=False)
+        print(f"  ✓ {label}: {len(ordered):,} rows → {path}")
+
+    print_section("EXPORTING FP / FN CSVs")
+    export_cases(df[fp_mask].reset_index(drop=True), FP_CSV_PATH, f"FP ({FP})")
+    export_cases(df[fn_mask].reset_index(drop=True), FN_CSV_PATH, f"FN ({FN})")
 
     # ── Footer ────────────────────────────────────────────────────────────
     print_section("SUMMARY")

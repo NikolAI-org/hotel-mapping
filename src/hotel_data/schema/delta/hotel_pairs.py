@@ -27,6 +27,8 @@ hotel_pairs_schema = StructType([
     StructField("normalized_name_score_levenshtein", FloatType(), False),
     StructField("name_score_sbert", FloatType(), False),
     StructField("normalized_name_score_sbert", FloatType(), False),
+    StructField("average_name_score", FloatType(), False),
+    StructField("average_normalized_name_score", FloatType(), False),
     StructField("star_ratings_score", FloatType(), False),
     StructField("address_line1_score", FloatType(), False),
     StructField("postal_code_match", FloatType(), False),
@@ -48,5 +50,6 @@ hotel_pairs_schema = StructType([
     StructField("average_name_score", FloatType(), False),
     StructField("average_normalized_name_score", FloatType(), False),
     StructField("pair_key_left", StringType(), False),
-    StructField("pair_key_right", StringType(), False)
+    StructField("pair_key_right", StringType(), False),
+    StructField("overall_pair_score", FloatType(), False)
 ])

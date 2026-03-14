@@ -11,7 +11,8 @@ CONTAINMENT_ALGO = "containment"
 
 def extract_units(text):
     """Extracts critical unit identifiers: Numbers, Roman Numerals, Single Letters"""
-    if not text: return set()
+    if not text:
+        return set()
     text = text.upper()
 
     units = set()
@@ -69,6 +70,49 @@ def calculate_unit_score(s1: str, s2: str) -> float:
 #
 #     return 0.0
 
+
+def bigram_jaccard(s1: str, s2: str) -> float:
+    """
+    Calculates character bi-gram Jaccard similarity between two strings.
+
+    Each string is decomposed into overlapping character 2-grams (after lowercasing
+    and stripping whitespace), then standard Jaccard is applied on the resulting sets.
+
+    Examples:
+        "grand palace" → {"gr","ra","an","nd","d ","  ","pa","al","la","ac","ce"}
+        bigram_jaccard("grand palace", "grand palce") → ~0.73
+
+    Returns:
+        float: Score in [0.0, 1.0].
+               1.0  → identical bigram sets
+               0.5  → both empty (neutral)
+               0.0  → one side empty, or completely disjoint bigram sets
+    """
+    if not s1 and not s2:
+        return ScoringConstants.BOTH_EMPTY_SCORE
+
+    if not s1 or not s2:
+        return ScoringConstants.ONE_SIDE_EMPTY_SCORE
+
+    s1 = s1.lower().strip()
+    s2 = s2.lower().strip()
+
+    def to_bigrams(text: str) -> set:
+        return {text[i:i+2] for i in range(len(text) - 1)}
+
+    bg1 = to_bigrams(s1)
+    bg2 = to_bigrams(s2)
+
+    if not bg1 and not bg2:
+        return ScoringConstants.BOTH_EMPTY_SCORE
+    if not bg1 or not bg2:
+        return ScoringConstants.ONE_SIDE_EMPTY_SCORE
+
+    intersection = len(bg1 & bg2)
+    union = len(bg1 | bg2)
+    return intersection / union if union > 0 else 0.0
+
+
 def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleaning: bool = True) -> float:
     """
     Calculates a similarity score based on the selected algorithm.
@@ -89,7 +133,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
         """Tokenizes the text, converts to lowercase, and filters stop words."""
         # Note: We keep this because we need to support the raw 'name' column
         # and we need to produce Sets/Sorted Strings for the algorithms.
-        if not text: return []
+        if not text:
+            return []
         text = text.lower()
 
         # 1. Remove Phrases (Always done if cleaning is on) (Order matters!)
@@ -102,7 +147,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
                 text = re.sub(pattern, " ", text)
 
         # 2. Standard Cleanup (Punctuation)
-        text = text.replace(',', ' ').replace('-', ' ').replace('.', ' ').strip()
+        text = text.replace(',', ' ').replace(
+            '-', ' ').replace('.', ' ').strip()
         tokens = text.split()
 
         # 3. Filter Stop Words
@@ -130,9 +176,9 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 1. Jaccard Calculation (Uses Sets) ---
     if algo == JACCARD_ALGO:
         if not set1 and not set2:
-            final_score = ScoringConstants.BOTH_EMPTY_SCORE #0.5
+            final_score = ScoringConstants.BOTH_EMPTY_SCORE  # 0.5
         elif not set1 or not set2:
-            final_score = ScoringConstants.ONE_SIDE_EMPTY_SCORE #0.0
+            final_score = ScoringConstants.ONE_SIDE_EMPTY_SCORE  # 0.0
         else:
             intersection = len(set1.intersection(set2))
             union = len(set1.union(set2))
@@ -229,8 +275,8 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
     # --- 4. Apply Numeric Penalty (Common) ---
     # Logic: If BOTH have numbers, and those numbers are DIFFERENT, apply penalty.
     # This applies to the result of ANY selected algorithm.     # e.g., "OYO Townhouse 123" -> {'123'}
-    #removing penalty since added name_unit_score|address_unit_score
-    #final_score -= get_numeric_penalty(s1, s2)
+    # removing penalty since added name_unit_score|address_unit_score
+    # final_score -= get_numeric_penalty(s1, s2)
 
     # Ensure score doesn't drop below zero
     return max(0.0, final_score)

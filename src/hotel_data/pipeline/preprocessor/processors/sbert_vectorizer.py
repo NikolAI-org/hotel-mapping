@@ -1,4 +1,5 @@
 import os
+import fcntl
 import pandas as pd
 from typing import Iterator
 from pyspark.sql import DataFrame
@@ -7,6 +8,11 @@ from pyspark.sql.functions import pandas_udf, col, struct
 from pyspark.sql.types import ArrayType, FloatType, StructType, StructField
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+
+# Path used to serialise concurrent torch/SBERT loads across Python workers.
+# libtorch_cpu.so is ~1.8 GB; two workers calling dlopen() simultaneously
+# exhausts mmap resources and raises ImportError: failed to map segment.
+_TORCH_LOAD_LOCK = "/tmp/spark_torch_load.lock"
 
 # 1. Define the schema for the returned embeddings
 embedding_schema = StructType([
@@ -24,14 +30,29 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
     os.environ["HF_HOME"] = "/tmp/hf_cache"
     os.makedirs("/tmp/hf_cache", exist_ok=True)
 
-    from sentence_transformers import SentenceTransformer
-    import torch
-
-    # Singleton Model
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    # Use CPU if your local GPU RAM is low
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
+    # Acquire an exclusive file lock before dlopen-ing libtorch_cpu.so.
+    # This serialises concurrent Python workers so only one maps the ~1.8 GB
+    # shared library at a time, preventing mmap ENOMEM when executor-cores > 1.
+    #
+    # Also set umask=0 so every file/dir created by HuggingFace's cache
+    # (model weights, lock files, blobs) is world-writable (0o666/0o777).
+    # Without this, files written by the first worker (e.g. spark UID 999)
+    # are 0o644/0o755 and subsequent workers from different PIDs get
+    # PermissionError when trying to create .lock files inside the cache.
+    import stat
+    _old_umask = os.umask(0)
+    try:
+        with open(_TORCH_LOAD_LOCK, "w") as _lock:
+            fcntl.flock(_lock, fcntl.LOCK_EX)
+            from sentence_transformers import SentenceTransformer
+            import torch
+            # Singleton Model
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = model.to(device)
+        # Lock released — next worker can now safely load its own model copy.
+    finally:
+        os.umask(_old_umask)
 
     for pdf in iterator:
         # We use a very small internal batch size to keep memory stable
@@ -41,9 +62,12 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
             "convert_to_numpy": True
         }
 
-        name_vecs = model.encode(pdf['name'].fillna("").tolist(), **encoding_kwargs).tolist()
-        norm_vecs = model.encode(pdf['normalized_name'].fillna("").tolist(), **encoding_kwargs).tolist()
-        addr_vecs = model.encode(pdf['combined_address'].fillna("").tolist(), **encoding_kwargs).tolist()
+        name_vecs = model.encode(pdf['name'].fillna(
+            "").tolist(), **encoding_kwargs).tolist()
+        norm_vecs = model.encode(pdf['normalized_name'].fillna(
+            "").tolist(), **encoding_kwargs).tolist()
+        addr_vecs = model.encode(pdf['combined_address'].fillna(
+            "").tolist(), **encoding_kwargs).tolist()
 
         yield pd.DataFrame({
             "name_embedding": name_vecs,
@@ -68,7 +92,8 @@ class SbertVectorizer(BaseProcessor[DataFrame]):
         # Apply the optimized Pandas UDF to all three columns at once
         df_with_vecs = df.withColumn(
             "all_vecs",
-            compute_all_embeddings(struct("name", "normalized_name", "combined_address"))
+            compute_all_embeddings(
+                struct("name", "normalized_name", "combined_address"))
         )
 
         # Flatten the struct into top-level columns and drop the struct

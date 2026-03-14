@@ -25,7 +25,8 @@ class DeltaTableManager:
         base_path: str,
     ) -> None:
         self.spark = spark
-        self.catalog_name = catalog_name  # e.g. "spark_catalog" in UC world, logical in OSS
+        # e.g. "spark_catalog" in UC world, logical in OSS
+        self.catalog_name = catalog_name
         self.schema_name = schema_name    # e.g. "bronze"
         self.base_path = base_path.rstrip("/")  # e.g. "s3a://hotel-lake/delta"
         self.use_catalog = True  # we will probe UC, then fall back to OSS
@@ -46,7 +47,8 @@ class DeltaTableManager:
         In local OSS Spark, this will typically land in the Hive metastore
         configured via DERBY_HOME / MySQL / Postgres.
         """
-        print(f"🧭 Ensuring catalog '{self.catalog_name}' and schema '{self.schema_name}' exist...")
+        print(
+            f"🧭 Ensuring catalog '{self.catalog_name}' and schema '{self.schema_name}' exist...")
 
         try:
             # Try Unity Catalog first (Databricks-like behavior)
@@ -55,19 +57,24 @@ class DeltaTableManager:
                 f"CREATE SCHEMA IF NOT EXISTS {self.catalog_name}.{self.schema_name}"
             )
             self.use_catalog = True
-            print(f"✅ Using Unity Catalog: {self.catalog_name}.{self.schema_name}")
+            print(
+                f"✅ Using Unity Catalog: {self.catalog_name}.{self.schema_name}")
         except Exception as e:
             msg = str(e)
             if "PARSE_SYNTAX_ERROR" in msg or "REQUIRES_SINGLE_PART_NAMESPACE" in msg:
-                print("⚙️ Unity Catalog not available. Falling back to OSS Spark (Hive/Database mode).")
+                print(
+                    "⚙️ Unity Catalog not available. Falling back to OSS Spark (Hive/Database mode).")
                 try:
                     # Classic Hive DB (single catalog: spark_catalog)
-                    self.spark.sql(f"CREATE DATABASE IF NOT EXISTS {self.schema_name}")
+                    self.spark.sql(
+                        f"CREATE DATABASE IF NOT EXISTS {self.schema_name}")
                     self.use_catalog = False
-                    print(f"✅ OSS schema/database '{self.schema_name}' ensured.")
+                    print(
+                        f"✅ OSS schema/database '{self.schema_name}' ensured.")
                 except Exception as hive_e:
                     # In a real prod setup this would be a hard failure with alerts
-                    print(f"⚠️ Could not persist schema '{self.schema_name}': {hive_e}")
+                    print(
+                        f"⚠️ Could not persist schema '{self.schema_name}': {hive_e}")
                     print("   -> Check Hive metastore configuration.")
                     self.use_catalog = False
             else:
@@ -103,7 +110,6 @@ class DeltaTableManager:
         """
         return os.path.join(self.base_path, self.schema_name, table_name)
 
-
     def _table_exists(self, table_name: str) -> bool:
         path = self._get_table_path(table_name)
         try:
@@ -111,7 +117,6 @@ class DeltaTableManager:
         except Exception as e:
             print(f"⚠️ _table_exists: Delta check failed for {path}: {e}")
             return False
-
 
     # ----------------------------------------------------------------------
     # Public table operations
@@ -137,17 +142,17 @@ class DeltaTableManager:
 
         print(f"📦 Creating Delta table '{fq_name}' at {path}")
 
-        # --- OPTIMIZE INITIAL WRITE ---
+        # Write directly without coalescing — coalesce triggers a full shuffle
+        # that spills large datasets to disk and runs out of space.
+        # Delta's own OPTIMIZE command can compact files afterwards if needed.
         if df is not None and len(df.columns) > 0:
-            total_rows = df.count()
-            optimal_partitions = max(1, total_rows // 10000)
-            print(f"Optimizing initial write into {optimal_partitions} files...")
-            initial_df = df.coalesce(optimal_partitions)
+            initial_df = df
         else:
-            initial_df = self.spark.createDataFrame([], "id STRING").coalesce(1)
+            initial_df = self.spark.createDataFrame([], "id STRING")
 
         # Write initial data to physically create the Delta log
-        initial_df.write.format("delta").mode("overwrite").option("mergeSchema", "true").save(path)
+        initial_df.write.format("delta").mode(
+            "overwrite").option("mergeSchema", "true").save(path)
 
         # Register in catalog
         try:
@@ -183,14 +188,16 @@ class DeltaTableManager:
         # 1. If table is new, create_table handles the write. Stop execution to prevent double-writing.
         if not self._table_exists(table_name):
             self.create_table(table_name, df=df)
-            print(f"✅ Data written to '{fq_name}' successfully during creation.")
+            print(
+                f"✅ Data written to '{fq_name}' successfully during creation.")
             return
 
             # 2. If table exists, optimize the incoming batch before writing
         if df is not None and len(df.columns) > 0:
             total_rows = df.count()
             optimal_partitions = max(1, total_rows // 10000)
-            print(f"Optimizing append/overwrite into {optimal_partitions} files...")
+            print(
+                f"Optimizing append/overwrite into {optimal_partitions} files...")
             df = df.coalesce(optimal_partitions)
 
         print(
@@ -229,13 +236,26 @@ class DeltaTableManager:
         path = self._get_table_path(table_name)
 
         # Allow new columns from source DataFrames to evolve target schema during merge.
-        self.spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+        self.spark.conf.set(
+            "spark.databricks.delta.schema.autoMerge.enabled", "true")
 
         if not self._table_exists(table_name):
+            # Table is brand-new: create_table writes df as the initial snapshot.
+            # Skip the merge entirely — merging df against itself doubles all disk I/O.
             self.create_table(table_name, df=df)
+            print(f"✅ Initial load complete for '{fq_name}'. Skipping merge.")
+            return
+
+        # Low-overhead merge hints: push-down broadcast for small sources and
+        # avoid re-sorting the target file list unnecessarily.
+        self.spark.conf.set(
+            "spark.databricks.delta.merge.optimizeInsertOnlyMerge.enabled", "true")
+        self.spark.conf.set(
+            "spark.databricks.delta.merge.repartitionBeforeWrite.enabled", "true")
 
         delta_table = DeltaTable.forPath(self.spark, path)
-        condition = " AND ".join([f"target.{k} = source.{k}" for k in key_columns])
+        condition = " AND ".join(
+            [f"target.{k} = source.{k}" for k in key_columns])
 
         print(f"🔄 Merging into '{fq_name}' on keys {key_columns}...")
         delta_table.alias("target").merge(

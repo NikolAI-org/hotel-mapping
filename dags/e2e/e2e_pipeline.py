@@ -8,13 +8,13 @@ import json
 import select
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
-SUPPLIERS = ["ean", "bookingcom",
-             #"ratehawk",
+SUPPLIERS = ["ean", "hotelbeds",
+             # "ratehawk",
              # "grnconnect",
              # "hobse",
              ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
-COUNTRY = 'india'
+COUNTRY = 'usa'
 
 # Keep clustering defaults aligned with cluster DAG behavior.
 CLUSTER_CONFIG = {
@@ -47,36 +47,46 @@ DEFAULT_MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_jaccard",
+                    "threshold": 0.9, "comparator": "gte"},
                 {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
-                {"signal": "name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_levenshtein",
+                    "threshold": 0.9, "comparator": "gte"},
                 {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_jaccard", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                        {"signal": "name_score_jaccard",
+                            "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_jaccard",
+                            "threshold": 0.9, "comparator": "gte"},
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_lcs", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                        {"signal": "name_score_lcs",
+                            "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_lcs",
+                            "threshold": 0.9, "comparator": "gte"},
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_levenshtein", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                        {"signal": "name_score_levenshtein",
+                            "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_levenshtein",
+                            "threshold": 0.9, "comparator": "gte"},
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_sbert", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                        {"signal": "name_score_sbert",
+                            "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_sbert",
+                            "threshold": 0.9, "comparator": "gte"},
                     ],
                 },
             ],
@@ -84,15 +94,18 @@ DEFAULT_MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "address_line1_score", "threshold": 0.2, "comparator": "gte"},
-                {"signal": "address_sbert_score", "threshold": 0.2, "comparator": "gte"},
+                {"signal": "address_line1_score",
+                    "threshold": 0.2, "comparator": "gte"},
+                {"signal": "address_sbert_score",
+                    "threshold": 0.2, "comparator": "gte"},
             ],
         },
         {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
         {
             "operator": "OR",
             "rules": [
-                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "postal_code_match",
+                    "threshold": 0.5, "comparator": "gte"},
                 {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"},
             ],
         },
@@ -100,8 +113,10 @@ DEFAULT_MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "phone_match_score",
+                    "threshold": 0.5, "comparator": "gte"},
+                {"signal": "email_match_score",
+                    "threshold": 0.5, "comparator": "gte"},
                 {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"},
             ],
         },
@@ -152,15 +167,27 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     else:
         raise ValueError(f"Unsupported job_type: {job_type}")
 
+    # Ensure hotel_data package is importable by both the driver (running in
+    # this airflow-worker process) and the executors (running in spark-worker).
+    # The module lives at /opt/airflow/hotel_data in all containers.
+    if spark_env is None:
+        spark_env = dict(os.environ)
+    spark_env.setdefault("PYTHONPATH", "/opt/airflow")
+
     # Build spark-submit command mimicking the working scripts
     spark_submit_cmd = [
         '/opt/spark/bin/spark-submit',
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
         '--name', job_name,
-        '--executor-memory', '6g',  # Give the worker nodes 2GB of RAM
-        '--executor-cores', '5',  # STRICTLY 1 core so it only loads 1 PyTorch model!
-        '--driver-memory', '3g',
+        # ROLLBACK: '--executor-memory', '8g' (original) | '16g' | '12g' | '14g' | '18g'
+        '--executor-memory', '12g',
+        # 1 core: only 1 Python worker active at a time (prevents concurrent
+        # libtorch_cpu.so mmap; file-lock in sbert_vectorizer.py also guards this).
+        # ROLLBACK: '--executor-cores', '3' | '4' | '2'
+        '--executor-cores', '1',
+        # ROLLBACK: '--driver-memory', '4g',  (unchanged)
+        '--driver-memory', '4g',
         '--packages',
         'io.delta:delta-spark_2.12:3.3.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
         '--conf', 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension',
@@ -171,6 +198,27 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         '--conf', 'spark.hadoop.fs.s3a.secret.key=minioadmin',
         '--conf', 'spark.hadoop.fs.s3a.path.style.access=true',
         '--conf', 'spark.hadoop.fs.s3a.connection.ssl.enabled=false',
+        '--conf', 'spark.executorEnv.PYTHONPATH=/opt/airflow',
+        '--conf', 'spark.local.dir=/tmp/spark-tmp',
+        '--conf', 'spark.sql.shuffle.partitions=12',
+        # NOTE: spark.executor.pyspark.memory intentionally omitted — PyTorch needs
+        # 2-3g per Python worker; constraining to 1g caused ENOMEM (os error 12)
+        # in safetensors safe_open during model load.
+        # Force SortShuffleWriter (1 sorted file/mapper) instead of
+        # BypassMergeSortShuffleWriter (N files/mapper then merge = 2x peak disk).
+        '--conf', 'spark.shuffle.sort.bypassMergeThreshold=1',
+        '--conf', 'spark.shuffle.compress=true',
+        '--conf', 'spark.shuffle.spill.compress=true',
+        # Prevent executors being declared dead during long GC pauses
+        '--conf', 'spark.network.timeout=600s',
+        '--conf', 'spark.executor.heartbeatInterval=60s',
+        '--conf', 'spark.storage.blockManagerSlaveTimeoutMs=600000',
+        # Adaptive Query Execution — coalesces shuffle partitions automatically
+        '--conf', 'spark.sql.adaptive.enabled=true',
+        '--conf', 'spark.sql.adaptive.coalescePartitions.enabled=true',
+        # G1GC + Java 21 flags are set in spark-defaults.conf so they are not
+        # overridden here (passing spark.executor.extraJavaOptions in spark-submit
+        # would replace the --add-opens flags, breaking Java 21 compatibility).
         script_path,
     ]
 
@@ -193,7 +241,8 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     heartbeat_every_sec = 60
     while True:
         if proc.stdout is not None:
-            ready, _, _ = select.select([proc.stdout], [], [], heartbeat_every_sec)
+            ready, _, _ = select.select(
+                [proc.stdout], [], [], heartbeat_every_sec)
             if ready:
                 line = proc.stdout.readline()
                 if line:
@@ -208,7 +257,7 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
                 raise Exception(f"Spark job failed with return code {rc}")
             break
 
-        print(f"Spark job '{job_name}' still running...")
+        # print(f"Spark job '{job_name}' still running...")
 
     print(f"\nSpark job {job_name} completed successfully")
     return 0

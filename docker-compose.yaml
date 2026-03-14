@@ -281,7 +281,6 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/spark/conf:/opt/spark/conf
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
-      - spark-tmp:/tmp/spark-tmp
       - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
     networks:
       - delta-lake-network
@@ -300,8 +299,10 @@ services:
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_NO_DAEMONIZE=true
-      - SPARK_WORKER_MEMORY=8G
-      - SPARK_WORKER_CORES=6
+      # ROLLBACK: SPARK_WORKER_MEMORY=8G
+      - SPARK_WORKER_MEMORY=22G
+      # ROLLBACK: SPARK_WORKER_CORES=6
+      - SPARK_WORKER_CORES=8
       - SPARK_WORKER_DIR=/tmp/spark-work
       - PYSPARK_PYTHON=/usr/local/bin/python3
       - PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3
@@ -311,11 +312,11 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
-      - spark-tmp:/tmp/spark-tmp
-      - spark-work:/tmp/spark-work
       - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
-    depends_on:
-      - spark-master
+      # Named volume keeps the SBERT model cached across container restarts.
+      # Using a named volume (not a host bind-mount) avoids macOS→Lima→Docker
+      # 9p filesystem permission mapping issues with UID 999.
+      - hf-model-cache:/tmp/hf_cache
     networks:
       - delta-lake-network
 
@@ -379,6 +380,7 @@ volumes:
   spark-tmp:
   spark-work:
   spark-binaries:
+  hf-model-cache:
 
 
 networks:

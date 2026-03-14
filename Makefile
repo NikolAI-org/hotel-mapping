@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs clean setup init-airflow
+.PHONY: help build up down restart logs clean setup init-airflow prepare-host
 
 help:
 	@echo "Delta Lake Airflow Pipeline - Available Commands"
@@ -15,7 +15,15 @@ help:
 
 setup:
 	@echo "Running initial setup..."
+	$(MAKE) prepare-host
 	./setup.sh
+
+prepare-host:
+	@echo "Preparing host bind-mount directories (/tmp dirs are cleared on reboot)..."
+	mkdir -p /tmp/hotel-mapping-spark-tmp
+	chmod -R 777 /tmp/hotel-mapping-spark-tmp
+	@echo "  ✓ /tmp/hotel-mapping-spark-tmp"
+	@echo "  ✓ hf-model-cache is a Docker named volume (no host prep needed)"
 
 build:
 	@echo "Building Docker images..."
@@ -23,6 +31,7 @@ build:
 
 up:
 	@echo "Starting all services..."
+	$(MAKE) prepare-host
 	docker-compose up -d
 
 down:

@@ -11,10 +11,6 @@ scoring:
   match_logic:
     operator: AND
     rules:
-      # 1: Simple Leaf (Unary context)
-      - signal: geo_distance_km
-        threshold: 0.5
-        comparator: lte
       - operator: OR
         rules:
           - signal: name_score_jaccard
@@ -23,82 +19,105 @@ scoring:
           - signal: name_score_lcs
             threshold: 0.9
             comparator: gte
-          - signal: name_score_levenshtein
-            threshold: 0.9
-            comparator: gte
           - signal: name_score_sbert
             threshold: 0.9
             comparator: gte
+          - signal: name_score_levenshtein
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_jaccard
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_lcs
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_levenshtein
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_sbert
+            threshold: 0.95
+            comparator: gte
+          - signal: average_name_score
+            threshold: 0.8
+            comparator: gte
+          - signal: average_normalized_name_score
+            threshold: 0.9
+            comparator: gte
           - operator: AND
             rules:
-              - signal: name_score_jaccard
-                threshold: 0.75
+              - signal: normalized_name_score_containment
+                threshold: 1
                 comparator: gte
-              - signal: normalized_name_score_jaccard
-                threshold: 0.9
-                comparator: gte
-          - operator: AND
-            rules:
-              - signal: name_score_lcs
-                threshold: 0.75
-                comparator: gte
-              - signal: normalized_name_score_lcs
-                threshold: 0.9
-                comparator: gte
-          - operator: AND
-            rules:
-              - signal: name_score_levenshtein
-                threshold: 0.75
-                comparator: gte
-              - signal: normalized_name_score_levenshtein
-                threshold: 0.9
-                comparator: gte
-          - operator: AND
-            rules:
               - signal: name_score_sbert
                 threshold: 0.75
                 comparator: gte
-              - signal: normalized_name_score_sbert
-                threshold: 0.9
+              - signal: geo_distance_km
+                threshold: 0.2
+                comparator: lte
+          - operator: AND
+            rules:
+              - signal: normalized_name_score_containment
+                threshold: 1
                 comparator: gte
+              - signal: name_score_sbert
+                threshold: 0.7
+                comparator: gte
+              - signal: geo_distance_km
+                threshold: 0.1
+                comparator: lte
+          - operator: AND
+            rules:
+              - signal: name_score_containment
+                threshold: 0.95
+                comparator: gte
+              - signal: normalized_name_score_containment
+                threshold: 0.95
+                comparator: gte
+              - signal: star_ratings_score
+                threshold: 0.8
+                comparator: gte
+              - signal: geo_distance_km
+                threshold: 0.2
+                comparator: lte
       - operator: OR
         rules:
           - signal: address_line1_score
-            threshold: 0.2
+            threshold: 0.5
             comparator: gte
           - signal: address_sbert_score
-            threshold: 0.2
-            comparator: gte
-      - signal: star_ratings_score
-        threshold: 0.0
-        comparator: gte
-      - operator: OR
-        rules:
-          - signal: postal_code_match
             threshold: 0.5
             comparator: gte
           - signal: geo_distance_km
-            threshold: 0.1
+            threshold: 0.2
             comparator: lte
-      - signal: country_match
+      - signal: property_type_score
+        threshold: 0.5
+        comparator: gte
+      - signal: name_unit_score
         threshold: 0.5
         comparator: gte
       - operator: OR
         rules:
-          - signal: phone_match_score
-            threshold: 0.5
+        - signal: address_unit_score
+          threshold: 0.5
+          comparator: gte
+        - operator: AND
+          rules:
+          - signal: address_unit_score
+            threshold: 0.25
             comparator: gte
-          - signal: email_match_score
-            threshold: 0.5
-            comparator: gte
-          - signal: fax_match_score
-            threshold: 0.5
-            comparator: gte
+          - signal: geo_distance_km
+            threshold: 0.1
+            comparator: lte
+      - signal: supplier_score
+        threshold: 0.0
+        comparator: lte
+      
 
 clustering:
   algorithm: clique
   # Options could be labelpropagation, unionfind, clique
-  transitivity: True
+  transitivity: False
 
 streaming:
   enabled: false

@@ -1,7 +1,4 @@
-import os
-import sys
-# This must be first line before any hotel data import
-sys.path.append('/opt/airflow')
+from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.config.paths import (
     BASE_DELTA_PATH,
     CATALOG_NAME,
@@ -9,7 +6,6 @@ from hotel_data.config.paths import (
     TABLE_HOTELS_NAME,
     TABLE_HOTELS_PAIRS_NAME
 )
-from hotel_data.delta.delta_table_manager import DeltaTableManager
 import hotel_data.pipeline.scoring.scorers.overall_pair_scorer as overall_pair_scorer
 from spark.jobs.cluster.entity_resolution_pipeline import EntityResolutionPipeline
 from pyspark.sql import Window
@@ -18,8 +14,8 @@ from pyspark.sql import SparkSession, Window
 import json
 import os
 import sys
-import functools
-# Ensure we can import custom modules (Standard Airflow setup)
+# This must be first line before any hotel data import
+sys.path.append('/opt/airflow')
 # import pyspark.sql.functions as F
 
 
