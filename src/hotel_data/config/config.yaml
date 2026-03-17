@@ -112,7 +112,9 @@ scoring:
       - signal: supplier_score
         threshold: 0.0
         comparator: lte
-      
+      - signal: name_residual_score
+        threshold: 0.5
+        comparator: gte
 
 clustering:
   algorithm: clique

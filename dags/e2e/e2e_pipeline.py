@@ -8,13 +8,15 @@ import json
 import select
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
-SUPPLIERS = ["ean", "hotelbeds",
+SUPPLIERS = ["ean", "hotelbeds"
+             # "ean", "bookingcom"
              # "ratehawk",
              # "grnconnect",
              # "hobse",
              ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
-COUNTRY = 'usa'
+COUNTRY = 'uae'
+# COUNTRY = 'mumbai'
 
 # Keep clustering defaults aligned with cluster DAG behavior.
 CLUSTER_CONFIG = {
@@ -174,18 +176,31 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         spark_env = dict(os.environ)
     spark_env.setdefault("PYTHONPATH", "/opt/airflow")
 
+    # Per-job-type resource sizing (worker has 8 cores / 22g):
+    #   ingestion : no PyTorch — small executors so all 8 cores can be used
+    #               3g + 10% overhead = 3.3g → floor(22/3.3)=6 executors, 6 cores active
+    #   scoring   : loads PyTorch/SBERT (~2-3g Python worker) — 1 large executor
+    #               12g + 1.2g overhead; file-lock in sbert_vectorizer.py serialises load
+    #   clustering: graph algorithm, moderate memory, no heavy Python deps
+    #               4g + 10% overhead = 4.4g → floor(22/4.4)=5 executors, 5 cores active
+    if job_type == "ingestion":
+        executor_memory = "3g"
+        executor_cores = "1"
+    elif job_type == "scoring":
+        executor_memory = "12g"
+        executor_cores = "1"
+    else:  # clustering
+        executor_memory = "4g"
+        executor_cores = "1"
+
     # Build spark-submit command mimicking the working scripts
     spark_submit_cmd = [
         '/opt/spark/bin/spark-submit',
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
         '--name', job_name,
-        # ROLLBACK: '--executor-memory', '8g' (original) | '16g' | '12g' | '14g' | '18g'
-        '--executor-memory', '12g',
-        # 1 core: only 1 Python worker active at a time (prevents concurrent
-        # libtorch_cpu.so mmap; file-lock in sbert_vectorizer.py also guards this).
-        # ROLLBACK: '--executor-cores', '3' | '4' | '2'
-        '--executor-cores', '1',
+        '--executor-memory', executor_memory,
+        '--executor-cores', executor_cores,
         # ROLLBACK: '--driver-memory', '4g',  (unchanged)
         '--driver-memory', '4g',
         '--packages',

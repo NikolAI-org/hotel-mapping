@@ -37,6 +37,29 @@ ADDRESS_FIELDS = ["contact_address_line1", "contact_address_city_name",
 EXCLUDE_LOWERCASE_FIELDS = ["original_message"]
 
 
+def detect_hotel_schema(spark: SparkSession, source_path: str):
+    """
+    Peek at the first few lines of one file in source_path to decide which
+    top-level JSON shape is present:
+      - hotel_struct_schema : root is {"hotels": [...], "curatedHotels": [...]}
+      - hotel_array_schema  : root IS the hotel object (flat, per-file)
+    Falls back to hotel_array_schema on any error.
+    """
+    try:
+        snippet = " ".join(
+            row.value for row in
+            spark.read.text(source_path).limit(10).collect()
+        )
+        if '"hotels"' in snippet:
+            print("Schema auto-detected: hotel_struct_schema")
+            return hotel_struct_schema
+    except Exception as e:
+        print(
+            f"Schema auto-detection failed ({e}). Defaulting to hotel_array_schema.")
+    print("Schema auto-detected: hotel_array_schema")
+    return hotel_array_schema
+
+
 def create_spark_session(app_name: str) -> SparkSession:
     return (
         SparkSession.builder
@@ -61,11 +84,8 @@ def run_job():
 
     print(f"--- Starting Ingestion from: {source_path} ---")
 
-    # 2. Read Raw JSON
-    # recursiveFileLookup allows reading nested folders if needed
-    # raw_df = spark.read.option("recursiveFileLookup", "true").json(source_path)
-    # hotel_schema = hotel_struct_schema
-    hotel_schema = hotel_array_schema
+    # 2. Read Raw JSON — auto-detect top-level schema shape
+    hotel_schema = detect_hotel_schema(spark, source_path)
     reader = JSONStreamReader(source_path, schema=hotel_schema)
     raw_df = reader.read(spark)
 

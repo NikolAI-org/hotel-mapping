@@ -1,4 +1,6 @@
 from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import HotelPairScorerProcessor
+from hotel_data.delta.delta_table_manager import DeltaTableManager
+from hotel_data.config.paths import BASE_DELTA_PATH, CATALOG_NAME, SCHEMA_NAME, TABLE_HOTELS_PAIRS_NAME
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, StringType

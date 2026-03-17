@@ -92,7 +92,10 @@ def _signal_score_expr(signal: str, threshold: float, comparator: str) -> Column
 
     else:  # lte — lower is better (e.g. geo_distance_km)
         if t <= 0.0:
-            return F.when(c == 0, F.lit(1.0)).otherwise(F.lit(0.0)).cast("float")
+            # No gradient threshold to score against — use inverted value: 1 - c.
+            # Lower value → higher contribution (e.g. supplier_score=0 → 1.0, =1 → 0.0).
+            # Clamped to [0, 1] to guard against values outside that range.
+            return F.greatest(F.lit(0.0), F.least(F.lit(1.0), F.lit(1.0) - c)).cast("float")
 
         # two-segment linear:
         #   [0,  t]  →  [1.00, 0.75]  (the closer to 0 the better)
@@ -145,6 +148,7 @@ def _rule_to_expr(rule: dict) -> Column:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Module-level cache so config.yaml is read only once per Spark executor process.
+# Set to None to force a rebuild after any code or config change.
 _CACHED_EXPR: Optional[Column] = None
 
 
