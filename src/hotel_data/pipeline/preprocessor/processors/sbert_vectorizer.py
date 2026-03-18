@@ -28,7 +28,7 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
     # Reduce thread contention
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["HF_HOME"] = "/tmp/hf_cache"
-    os.makedirs("/tmp/hf_cache", exist_ok=True)
+    os.environ["SENTENCE_TRANSFORMERS_HOME"] = "/opt/spark/hf_cache"
 
     # Acquire an exclusive file lock before dlopen-ing libtorch_cpu.so.
     # This serialises concurrent Python workers so only one maps the ~1.8 GB

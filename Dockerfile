@@ -1,4 +1,6 @@
-FROM --platform=linux/arm64 apache/airflow:2.8.0-python3.11
+ARG DOCKER_PLATFORM=linux/amd64
+ARG JAVA_HOME_PATH=/usr/lib/jvm/java-17-openjdk-amd64
+FROM --platform=${DOCKER_PLATFORM} apache/airflow:2.8.0-python3.11
 
 USER root
 
@@ -17,8 +19,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Java environment variables
-#ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+ENV JAVA_HOME=${JAVA_HOME_PATH}
 ENV PATH=$PATH:$JAVA_HOME/bin
 
 # Spark will be copied from spark-master at runtime

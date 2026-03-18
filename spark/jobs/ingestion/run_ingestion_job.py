@@ -223,6 +223,7 @@ def safe_write_table(manager, table_name, df, key_columns=None):
     except Exception as e:
         print(f"Error writing to {table_name}: {e}")
         traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":

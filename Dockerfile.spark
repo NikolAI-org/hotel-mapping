@@ -1,5 +1,7 @@
 # Custom Spark image with Python 3.11 to match Airflow
-FROM --platform=linux/arm64 python:3.11-slim-bookworm
+ARG DOCKER_PLATFORM=linux/amd64
+ARG JAVA_HOME_PATH=/usr/lib/jvm/java-17-openjdk-amd64
+FROM --platform=${DOCKER_PLATFORM} python:3.11-slim-bookworm
 
 USER root
 
@@ -14,8 +16,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set Java environment
-#ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+ENV JAVA_HOME=${JAVA_HOME_PATH}
 ENV PATH=$PATH:$JAVA_HOME/bin
 
 # Download and install Spark
@@ -69,6 +70,11 @@ RUN mkdir -p /tmp/spark-tmp /tmp/spark-work && \
 USER spark
 
 WORKDIR ${SPARK_HOME}
+
+# Bake the SBERT model directly into the image to prevent runtime concurrency crashes
+ENV HF_HOME=/opt/spark/hf_cache
+ENV SENTENCE_TRANSFORMERS_HOME=/opt/spark/hf_cache
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Verify installation
 RUN python3 --version && \
