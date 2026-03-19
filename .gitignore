@@ -61,7 +61,8 @@ _symlink_format_manifest/
 .docker/
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo

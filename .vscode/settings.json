@@ -1,0 +1,15 @@
+{
+    // Python formatting
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+    // Ruff extension settings
+    "ruff.lint.enable": true,
+    "ruff.format.enable": true,
+    "ruff.configurationPreference": "filesystemFirst"
+}
