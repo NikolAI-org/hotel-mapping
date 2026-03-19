@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs clean setup init-airflow prepare-host
+.PHONY: help build up down restart logs clean setup init-airflow prepare-host install-hooks
 
 help:
 	@echo "Delta Lake Airflow Pipeline - Available Commands"
@@ -11,7 +11,14 @@ help:
 	@echo "make logs         - View all logs"
 	@echo "make clean        - Stop and remove all containers, volumes, and images"
 	@echo "make init-airflow - Initialize Airflow database"
+	@echo "make install-hooks - Install git pre-commit hook (ruff check)"
 	@echo "================================================="
+
+install-hooks:
+	@echo "Installing git hooks..."
+	cp hooks/pre-commit .git/hooks/pre-commit
+	chmod +x .git/hooks/pre-commit
+	@echo "  ✓ pre-commit hook installed"
 
 setup:
 	@echo "Running initial setup..."

@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run ruff check on staged Python files only.
+# Install: make install-hooks
+
+set -euo pipefail
+
+# Collect staged .py files (exclude deleted ones)
+STAGED=$(git diff --cached --name-only --diff-filter=d | grep '\.py$' || true)
+
+if [[ -z "$STAGED" ]]; then
+  exit 0
+fi
+
+# Prefer repo venv ruff, fall back to PATH
+if [[ -x ".venv/bin/ruff" ]]; then
+  RUFF=".venv/bin/ruff"
+elif command -v ruff &>/dev/null; then
+  RUFF="ruff"
+else
+  echo "ruff not found — skipping lint check. Run 'pip install ruff' to enable it."
+  exit 0
+fi
+
+echo "ruff: checking $(echo "$STAGED" | wc -w | tr -d ' ') staged Python file(s)..."
+
+# shellcheck disable=SC2086
+if ! $RUFF check --no-fix $STAGED; then
+  echo ""
+  echo "  Commit blocked: fix the issues above, or run:"
+  echo "    .venv/bin/ruff check --fix <file>"
+  echo "  then 'git add' the files again before committing."
+  exit 1
+fi
+
+echo "ruff: all checks passed."
