@@ -1,6 +1,5 @@
-from pyspark.sql import functions as F
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from pyspark.sql.types import StructType
 
 from hotel_data.pipeline.preprocessor.core.base_reader import BaseReader
 

@@ -1,7 +1,6 @@
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import StructType, ArrayType
 
-from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
 
 class GenericFlattener:

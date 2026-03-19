@@ -5,7 +5,6 @@ This will upload the hobse_mumbai.json file to the test bucket
 
 from minio import Minio
 import os
-import json
 
 
 def upload_sample_data():
@@ -55,21 +54,21 @@ def upload_sample_data():
         client.fput_object(
             bucket_name, object_path, sample_file, content_type="application/json"
         )
-        print(f"✓ Successfully uploaded to MinIO")
+        print("✓ Successfully uploaded to MinIO")
 
         # Verify upload
         stat = client.stat_object(bucket_name, object_path)
-        print(f"\nFile Info:")
+        print("\nFile Info:")
         print(f"  Size: {stat.size} bytes")
         print(f"  Content-Type: {stat.content_type}")
         print(f"  Last Modified: {stat.last_modified}")
 
-        print(f"\nYou can now run the DAG with parameters:")
+        print("\nYou can now run the DAG with parameters:")
         print(f"  country: {country}")
         print(f"  supplier_name: {supplier}")
 
     except Exception as e:
-        print(f"ERROR: Failed to upload file")
+        print("ERROR: Failed to upload file")
         print(f"Details: {str(e)}")
         raise
 

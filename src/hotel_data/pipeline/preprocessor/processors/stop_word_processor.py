@@ -2,13 +2,11 @@ import re
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
-from typing import List
 from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
 # Reuse the same stop words list from your scorer to ensure consistency
-from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer
 
 
 def remove_stop_words(text: str) -> str:

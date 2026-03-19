@@ -11,7 +11,6 @@ class EntityResolutionPipeline:
         self.spark = spark
         self.scorer = PairScorer(config["weights"], config["t_high"], config["t_low"])
         # Pass a standard Python logger
-        import logging
 
         transitity = config.get("transitivity", True)
         self.resolver = FlexibleClustering(spark, transitivity_enabled=transitity)

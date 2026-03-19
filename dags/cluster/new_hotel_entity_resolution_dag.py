@@ -242,7 +242,7 @@ def run_clustering_step(**context):
         print("!!! CRITICAL: SPARK JOB FAILED !!!")
         print("--- SPARK STDERR ---")
         print(result.stderr)  # This is where the Python Traceback lives!
-        raise Exception(f"Spark Job Failed. Check the STDERR block above for details.")
+        raise Exception("Spark Job Failed. Check the STDERR block above for details.")
 
 
 with DAG(

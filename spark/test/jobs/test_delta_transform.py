@@ -51,7 +51,7 @@ try:
     )
 
     print(f"   Records read: {df_raw.count()}")
-    print(f"   Schema:")
+    print("   Schema:")
     df_raw.printSchema()
 
     # Data transformations

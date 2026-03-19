@@ -500,7 +500,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
     if pool:
         top = sorted(pool.values(), key=lambda x: -x[2])[:10]
-        print(f"  Top 10 by TP:")
+        print("  Top 10 by TP:")
         for spec, _, tp, fp in top:
             parts = []
             ns = spec["name"]
@@ -822,7 +822,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         )
 
         # ── Phase 5b: Per-feature thresholds within OR buckets ──
-        print(f"\n  5b. Per-feature threshold tuning within OR buckets...")
+        print("\n  5b. Per-feature threshold tuning within OR buckets...")
         for spec in selected:
             for bucket_key in ["name", "norm"]:
                 bs = spec[bucket_key]
@@ -853,7 +853,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                 f"TP={after_5b[3]} FP={after_5b[4]}"
             )
         else:
-            print(f"  After 5b: no additional improvement")
+            print("  After 5b: no additional improvement")
 
     # ════════════════════ PHASE 6: REPORT ════════════════════
     if selected:

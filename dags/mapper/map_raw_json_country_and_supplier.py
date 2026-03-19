@@ -97,7 +97,7 @@ def run_spark_job_direct(job_name, **kwargs):
     env["PYSPARK_PYTHON"] = "/usr/local/bin/python3"
     env["PYSPARK_DRIVER_PYTHON"] = "/usr/local/bin/python3"
 
-    print(f"\nExecuting spark-submit...")
+    print("\nExecuting spark-submit...")
     result = subprocess.run(spark_submit_cmd, env=env, capture_output=True, text=True)
 
     # Print output
@@ -132,7 +132,7 @@ def log_completion(**context):
     print("=" * 80)
     print("JSON to Parquet Mapping Completed Successfully!")
     print("=" * 80)
-    print(f"\nParameters:")
+    print("\nParameters:")
     print(f"  Country: {country}")
     print(f"  Supplier: {supplier_name}")
     print(f"\nSource Path: s3a://data-lake/raw_input/{country}/{supplier_name}/")

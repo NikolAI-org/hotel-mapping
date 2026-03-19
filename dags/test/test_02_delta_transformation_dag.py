@@ -7,8 +7,6 @@ It also demonstrates Delta Lake time-travel capabilities.
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-import subprocess
-import os
 
 # Default arguments for the DAG
 default_args = {

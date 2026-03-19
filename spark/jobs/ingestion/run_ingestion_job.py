@@ -38,7 +38,6 @@ from hotel_data.pipeline.preprocessor.processors.hotel_flattener_processor impor
 from hotel_data.pipeline.preprocessor.readers.json_stream_reader import JSONStreamReader
 from hotel_data.schema.input.preprocessor_schema import hotel_array_schema
 from hotel_data.schema.input.preprocessor_schema import hotel_struct_schema
-from hotel_data.schema.delta.hotel_bronze import flattened_hotel_schema
 from hotel_data.delta.delta_table_manager import DeltaTableManager
 from hotel_data.config.paths import (
     BASE_DELTA_PATH,

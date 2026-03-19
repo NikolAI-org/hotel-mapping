@@ -3,14 +3,9 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional, Union, Any
+from typing import Any
 
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional, Union, Any
 
 
 class ScoringConstants:

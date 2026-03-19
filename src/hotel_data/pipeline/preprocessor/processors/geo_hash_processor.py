@@ -1,7 +1,7 @@
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, udf, struct
-from pyspark.sql.types import ArrayType, StringType, DoubleType, StructType
+from pyspark.sql.functions import col
+from pyspark.sql.types import ArrayType, StringType
 import h3
 from typing import List
 import math

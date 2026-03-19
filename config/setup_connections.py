@@ -5,7 +5,6 @@ Run this script to setup the Spark connection in Airflow
 
 from airflow import settings
 from airflow.models import Connection
-import os
 
 
 def create_spark_connection():

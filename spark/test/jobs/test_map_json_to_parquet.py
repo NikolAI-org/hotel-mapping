@@ -13,9 +13,7 @@ from pyspark.sql.functions import (
     explode,
     current_timestamp,
     lit,
-    concat_ws,
     array_join,
-    to_timestamp,
 )
 from pyspark.sql.types import (
     StructType,
@@ -24,7 +22,6 @@ from pyspark.sql.types import (
     DoubleType,
     IntegerType,
     ArrayType,
-    BooleanType,
 )
 import os
 
@@ -158,7 +155,7 @@ try:
     print(f"\n2. Reading JSON files from: {raw_input_path}")
     df_raw = spark.read.schema(root_schema).json(raw_input_path)
 
-    print(f"   Files read successfully")
+    print("   Files read successfully")
 
     # Explode hotels array to get individual hotel records
     print("\n3. Exploding hotels array...")
@@ -243,23 +240,23 @@ try:
 
     # Show statistics
     print("\n9. Data Statistics:")
-    print(f"\n   Hotels by City:")
+    print("\n   Hotels by City:")
     df_verify.groupBy("city").count().orderBy(col("count").desc()).show(10)
 
-    print(f"\n   Hotels by Star Rating:")
+    print("\n   Hotels by Star Rating:")
     df_verify.groupBy("star_rating").count().orderBy("star_rating").show()
 
-    print(f"\n   Hotels by Type:")
+    print("\n   Hotels by Type:")
     df_verify.groupBy("hotel_type").count().orderBy(col("count").desc()).show()
 
     print("\n" + "=" * 80)
     print("[TEST] JSON to Parquet Mapping Completed Successfully!")
     print("=" * 80)
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Total Hotels Mapped: {verify_count}")
     print(f"  Country: {country}")
     print(f"  Supplier: {supplier_name}")
-    print(f"  Output Format: Parquet (partitioned)")
+    print("  Output Format: Parquet (partitioned)")
     print(f"  Output Location: {mapped_output_path}")
     print("=" * 80)
 

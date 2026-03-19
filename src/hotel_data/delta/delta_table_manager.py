@@ -5,7 +5,6 @@ from typing import Any, Optional, cast
 
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.errors import AnalysisException
 
 
 class DeltaTableManager:

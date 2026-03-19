@@ -3,7 +3,6 @@ import fcntl
 import pandas as pd
 from typing import Iterator
 from pyspark.sql import DataFrame
-from pyspark.sql import functions as F
 from pyspark.sql.functions import pandas_udf, col, struct
 from pyspark.sql.types import ArrayType, FloatType, StructType, StructField
 
@@ -41,7 +40,6 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
     # Without this, files written by the first worker (e.g. spark UID 999)
     # are 0o644/0o755 and subsequent workers from different PIDs get
     # PermissionError when trying to create .lock files inside the cache.
-    import stat
 
     _old_umask = os.umask(0)
     try:

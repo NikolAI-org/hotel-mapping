@@ -4,7 +4,6 @@ This DAG generates sample hotel booking data and uploads it to MinIO.
 """
 
 from datetime import datetime, timedelta
-import json
 import io
 import pandas as pd
 from airflow import DAG

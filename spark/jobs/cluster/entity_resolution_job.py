@@ -8,9 +8,7 @@ from hotel_data.config.paths import (
 )
 import hotel_data.pipeline.scoring.scorers.overall_pair_scorer as overall_pair_scorer
 from spark.jobs.cluster.entity_resolution_pipeline import EntityResolutionPipeline
-from pyspark.sql import Window
-from pyspark.sql import functions as F
-from pyspark.sql import SparkSession, Window
+from pyspark.sql import SparkSession
 import json
 import os
 import sys

@@ -1,4 +1,4 @@
-from pyspark.sql.functions import udf, col
+from pyspark.sql.functions import udf
 from pyspark.sql.types import StringType
 import re
 from hotel_data.config.scoring_config import ScoringConstants

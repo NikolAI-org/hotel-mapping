@@ -1,9 +1,6 @@
 # hotel_pair_scorer_processor.py
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from sympy.physics.quantum.gate import normalized
-from pyspark.sql.types import FloatType
-from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.core.base_challenge_processor import (
     BaseChallengeProcessor,
 )
@@ -26,9 +23,7 @@ from hotel_data.pipeline.preprocessor.utils.phone_number_utils import (
 )
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
 
-from pyspark.sql import functions as F
 from hotel_data.pipeline.scoring.blockers.geohash_blocker import GeoHashBlocker
-from hotel_data.pipeline.scoring.blockers.postal_blocker import PostalCodeBlocker
 from hotel_data.pipeline.scoring.scorers.mismatch_rules import (
     unit_match_udf,
     type_match_udf,

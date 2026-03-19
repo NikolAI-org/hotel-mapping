@@ -27,7 +27,6 @@ Usage:
 import re
 import sys
 import time
-import textwrap
 from itertools import combinations
 from copy import deepcopy
 
@@ -423,7 +422,7 @@ def optimize_where_clause(csv_path: str, where_clause: str, min_precision: float
             f"  TP={tp_p1}  FP={fp_p1}"
         )
     else:
-        print(f"  No improvement from threshold tuning.")
+        print("  No improvement from threshold tuning.")
         f1_p1, p_p1, r_p1, tp_p1, fp_p1, fn_p1 = (
             f1_init,
             p_init,
@@ -622,7 +621,7 @@ def optimize_where_clause(csv_path: str, where_clause: str, min_precision: float
                         ]
 
         if best_new_branch is None or best_gain == 0:
-            print(f"  No more beneficial branches can be added within FP budget.")
+            print("  No more beneficial branches can be added within FP budget.")
             break
 
         trial_branches = best_branches + [best_new_branch]

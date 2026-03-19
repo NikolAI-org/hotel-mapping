@@ -5,7 +5,6 @@ Run this after starting all services to verify everything is working
 """
 
 import sys
-import time
 import requests
 from minio import Minio
 from minio.error import S3Error
@@ -45,7 +44,7 @@ def check_spark():
     try:
         response = requests.get("http://localhost:8081", timeout=5)
         return print_result(
-            "Spark Master", response.status_code == 200, f"UI accessible"
+            "Spark Master", response.status_code == 200, "UI accessible"
         )
     except requests.exceptions.RequestException as e:
         return print_result("Spark Master", False, f"Connection failed: {str(e)}")
@@ -109,7 +108,7 @@ def check_postgres():
         )
         conn.close()
         return print_result("PostgreSQL", True, "Database accessible")
-    except Exception as e:
+    except Exception:
         # PostgreSQL might not be exposed, which is okay
         return print_result(
             "PostgreSQL", True, "Not exposed externally (expected in Docker network)"

@@ -1,7 +1,5 @@
 from pyspark.sql import DataFrame
-from typing import List
 
-from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.processors.hotel_flattener_processor import (
     HotelFlattenerProcessor,
 )

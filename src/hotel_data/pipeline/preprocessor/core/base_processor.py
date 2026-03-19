@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pyspark.sql import DataFrame
-from typing import TypeVar, Generic, Tuple
+from typing import TypeVar, Generic
 
 T = TypeVar("T")
 

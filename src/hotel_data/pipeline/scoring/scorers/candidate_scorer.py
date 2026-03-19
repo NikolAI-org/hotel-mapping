@@ -1,6 +1,5 @@
 # hotel_pair_scorer_processor.py
 from pyspark.sql import DataFrame
-from pyspark.sql.types import FloatType
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_score
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine

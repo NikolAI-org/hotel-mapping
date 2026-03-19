@@ -17,7 +17,6 @@ from __future__ import annotations
 import os
 import sys
 import shutil
-from urllib.parse import urlparse
 from typing import Tuple
 
 # --- User-editable parameters -------------------------------------------------
@@ -72,7 +71,7 @@ def parse_s3_path(path: str) -> Tuple[str, str]:
 def ensure_boto3_available():
     try:
         import boto3  # noqa: F401
-    except Exception as e:
+    except Exception:
         print("boto3 is required for S3 operations. Install with: pip install boto3")
         raise
 
