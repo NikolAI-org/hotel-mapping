@@ -42,9 +42,11 @@ from pyspark.sql import functions as F
 # Config loading
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _find_config_path() -> str:
     """Resolve config.yaml relative to the hotel_data package root."""
     import hotel_data
+
     return os.path.join(os.path.dirname(hotel_data.__file__), "config", "config.yaml")
 
 
@@ -58,6 +60,7 @@ def _load_match_logic(config_path: Optional[str] = None) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # Signal → sub-score expression
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _signal_score_expr(signal: str, threshold: float, comparator: str) -> Column:
     """
@@ -95,7 +98,9 @@ def _signal_score_expr(signal: str, threshold: float, comparator: str) -> Column
             # No gradient threshold to score against — use inverted value: 1 - c.
             # Lower value → higher contribution (e.g. supplier_score=0 → 1.0, =1 → 0.0).
             # Clamped to [0, 1] to guard against values outside that range.
-            return F.greatest(F.lit(0.0), F.least(F.lit(1.0), F.lit(1.0) - c)).cast("float")
+            return F.greatest(F.lit(0.0), F.least(F.lit(1.0), F.lit(1.0) - c)).cast(
+                "float"
+            )
 
         # two-segment linear:
         #   [0,  t]  →  [1.00, 0.75]  (the closer to 0 the better)
@@ -114,6 +119,7 @@ def _signal_score_expr(signal: str, threshold: float, comparator: str) -> Column
 # ─────────────────────────────────────────────────────────────────────────────
 # Recursive rule → Column expression
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _rule_to_expr(rule: dict) -> Column:
     """Recursively convert a match_logic rule node to a PySpark Column expression."""

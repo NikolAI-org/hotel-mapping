@@ -6,8 +6,12 @@ from pyspark.sql.functions import col, trim, regexp_replace, udf
 from pyspark.sql.types import StringType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
-from hotel_data.pipeline.preprocessor.processors.smart_cleaner import smart_suffix_udf, normalize_real_estate_udf
+from hotel_data.pipeline.preprocessor.processors.smart_cleaner import (
+    smart_suffix_udf,
+    normalize_real_estate_udf,
+)
 from hotel_data.config.scoring_config import ScoringConstants
+
 
 def _make_dynamic_cleaner(address_count: int):
     """
@@ -24,7 +28,9 @@ def _make_dynamic_cleaner(address_count: int):
 
         # Filter valid addresses and SORT by length (Longest first).
         # This prevents "New Delhi" being partially removed by "Delhi".
-        valid_addresses = [str(a) for a in (addresses[:address_count] if addresses else []) if a]
+        valid_addresses = [
+            str(a) for a in (addresses[:address_count] if addresses else []) if a
+        ]
         valid_addresses.sort(key=len, reverse=True)
 
         for a in valid_addresses:
@@ -41,8 +47,10 @@ def _make_dynamic_cleaner(address_count: int):
                 # Apply word boundaries only if the address starts/ends with alphanumerics
                 # This ensures we match " Pune " but not the "Pune" inside "Puneet"
                 pattern_str = escaped_a
-                if a[0].isalnum(): pattern_str = r"\b" + pattern_str
-                if a[-1].isalnum(): pattern_str = pattern_str + r"\b"
+                if a[0].isalnum():
+                    pattern_str = r"\b" + pattern_str
+                if a[-1].isalnum():
+                    pattern_str = pattern_str + r"\b"
 
                 pattern = re.compile(pattern_str, flags=re.IGNORECASE)
                 s = pattern.sub("", s)
@@ -72,10 +80,10 @@ def _make_dynamic_cleaner(address_count: int):
 
 class NameFormatterProcessor(BaseProcessor[DataFrame]):
     def __init__(
-            self,
-            address_fields: List[str],
-            name_col: str = "name",
-            output_col: str = "normalized_name",
+        self,
+        address_fields: List[str],
+        name_col: str = "name",
+        output_col: str = "normalized_name",
     ):
         self.address_fields = address_fields
         self.name_col = name_col
@@ -91,7 +99,9 @@ class NameFormatterProcessor(BaseProcessor[DataFrame]):
         then apply smart_suffix_udf and normalize whitespace.
         """
         # Build column list to pass into the UDF: (name_col, addr1, addr2, ...)
-        udf_args: List[Column] = [col(self.name_col)] + [col(f) for f in self.address_fields]
+        udf_args: List[Column] = [col(self.name_col)] + [
+            col(f) for f in self.address_fields
+        ]
 
         # 1) Row-wise cleaning using UDF
         cleaned_col: Column = self.dynamic_cleaner_udf(*udf_args)

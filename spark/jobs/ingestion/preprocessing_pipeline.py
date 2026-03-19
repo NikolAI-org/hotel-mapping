@@ -2,15 +2,32 @@ from pyspark.sql import DataFrame
 from typing import List
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
-from hotel_data.pipeline.preprocessor.processors.hotel_flattener_processor import HotelFlattenerProcessor
-from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor import MandatoryFieldsFilterProcessor
-from hotel_data.pipeline.preprocessor.processors.default_value_processor import DefaultValueProcessor
-from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import AddressCombinerProcessor
-from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import NameFormatterProcessor
-from hotel_data.pipeline.preprocessor.processors.text_preprocessor_processor import TextPreprocessorProcessor
-from hotel_data.pipeline.preprocessor.processors.geo_hash_processor import GeoHashProcessor
-#from hotel_data.pipeline.preprocessor.processors.sbert_vectorizer import compute_all_embeddings
-from hotel_data.pipeline.preprocessor.processors.timestamp_appender_processor import TimestampAppenderProcessor
+from hotel_data.pipeline.preprocessor.processors.hotel_flattener_processor import (
+    HotelFlattenerProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.mandatory_fields_processor import (
+    MandatoryFieldsFilterProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.default_value_processor import (
+    DefaultValueProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.address_combiner_processor import (
+    AddressCombinerProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.name_formatter_processor import (
+    NameFormatterProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.text_preprocessor_processor import (
+    TextPreprocessorProcessor,
+)
+from hotel_data.pipeline.preprocessor.processors.geo_hash_processor import (
+    GeoHashProcessor,
+)
+
+# from hotel_data.pipeline.preprocessor.processors.sbert_vectorizer import compute_all_embeddings
+from hotel_data.pipeline.preprocessor.processors.timestamp_appender_processor import (
+    TimestampAppenderProcessor,
+)
 
 
 class PreprocessingPipeline:
@@ -30,7 +47,11 @@ class PreprocessingPipeline:
 
         # 4. Create Combined Address (for UID and Embedding)
         self.address_combiner = AddressCombinerProcessor(
-            address_fields=["contact_address_line1", "contact_address_city_name", "contact_address_country_name"]
+            address_fields=[
+                "contact_address_line1",
+                "contact_address_city_name",
+                "contact_address_country_name",
+            ]
         )
 
         self.text_preprocessor = TextPreprocessorProcessor()
@@ -38,14 +59,16 @@ class PreprocessingPipeline:
         # 5. Normalize Name (Remove stop words/address parts)
         self.name_normalizer = NameFormatterProcessor(
             address_fields=["contact_address_city_name", "contact_address_line1"],
-            output_col="normalized_name"
+            output_col="normalized_name",
         )
 
         # 6. Generate GeoHash (Blocking Key)
-        self.geohasher = GeoHashProcessor(resolution=7)  # Resolution 7 is good for ~1-2km blocking
+        self.geohasher = GeoHashProcessor(
+            resolution=7
+        )  # Resolution 7 is good for ~1-2km blocking
 
         # 7. Generate Embeddings (Heavy Compute)
-        #self.vectorizer = SbertVectorizer()
+        # self.vectorizer = SbertVectorizer()
 
         # 8. Add Processing Time
         self.timestamper = TimestampAppenderProcessor()

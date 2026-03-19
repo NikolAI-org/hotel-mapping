@@ -15,11 +15,13 @@ from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 _TORCH_LOAD_LOCK = "/tmp/spark_torch_load.lock"
 
 # 1. Define the schema for the returned embeddings
-embedding_schema = StructType([
-    StructField("name_embedding", ArrayType(FloatType())),
-    StructField("normalized_name_embedding", ArrayType(FloatType())),
-    StructField("address_embedding", ArrayType(FloatType()))
-])
+embedding_schema = StructType(
+    [
+        StructField("name_embedding", ArrayType(FloatType())),
+        StructField("normalized_name_embedding", ArrayType(FloatType())),
+        StructField("address_embedding", ArrayType(FloatType())),
+    ]
+)
 
 
 # 2. Define your highly optimized Pandas UDF
@@ -40,14 +42,16 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
     # are 0o644/0o755 and subsequent workers from different PIDs get
     # PermissionError when trying to create .lock files inside the cache.
     import stat
+
     _old_umask = os.umask(0)
     try:
         with open(_TORCH_LOAD_LOCK, "w") as _lock:
             fcntl.flock(_lock, fcntl.LOCK_EX)
             from sentence_transformers import SentenceTransformer
             import torch
+
             # Singleton Model
-            model = SentenceTransformer('all-MiniLM-L6-v2')
+            model = SentenceTransformer("all-MiniLM-L6-v2")
             device = "cuda" if torch.cuda.is_available() else "cpu"
             model = model.to(device)
         # Lock released — next worker can now safely load its own model copy.
@@ -59,21 +63,26 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
         encoding_kwargs = {
             "batch_size": 16,
             "show_progress_bar": False,
-            "convert_to_numpy": True
+            "convert_to_numpy": True,
         }
 
-        name_vecs = model.encode(pdf['name'].fillna(
-            "").tolist(), **encoding_kwargs).tolist()
-        norm_vecs = model.encode(pdf['normalized_name'].fillna(
-            "").tolist(), **encoding_kwargs).tolist()
-        addr_vecs = model.encode(pdf['combined_address'].fillna(
-            "").tolist(), **encoding_kwargs).tolist()
+        name_vecs = model.encode(
+            pdf["name"].fillna("").tolist(), **encoding_kwargs
+        ).tolist()
+        norm_vecs = model.encode(
+            pdf["normalized_name"].fillna("").tolist(), **encoding_kwargs
+        ).tolist()
+        addr_vecs = model.encode(
+            pdf["combined_address"].fillna("").tolist(), **encoding_kwargs
+        ).tolist()
 
-        yield pd.DataFrame({
-            "name_embedding": name_vecs,
-            "normalized_name_embedding": norm_vecs,
-            "address_embedding": addr_vecs
-        })
+        yield pd.DataFrame(
+            {
+                "name_embedding": name_vecs,
+                "normalized_name_embedding": norm_vecs,
+                "address_embedding": addr_vecs,
+            }
+        )
 
         # Explicitly clear internal cache if using GPU
         if device == "cuda":
@@ -93,7 +102,8 @@ class SbertVectorizer(BaseProcessor[DataFrame]):
         df_with_vecs = df.withColumn(
             "all_vecs",
             compute_all_embeddings(
-                struct("name", "normalized_name", "combined_address"))
+                struct("name", "normalized_name", "combined_address")
+            ),
         )
 
         # Flatten the struct into top-level columns and drop the struct
@@ -101,5 +111,5 @@ class SbertVectorizer(BaseProcessor[DataFrame]):
             "*",
             col("all_vecs.name_embedding"),
             col("all_vecs.normalized_name_embedding"),
-            col("all_vecs.address_embedding")
+            col("all_vecs.address_embedding"),
         ).drop("all_vecs")

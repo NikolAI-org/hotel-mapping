@@ -57,30 +57,39 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
     print("=" * 90)
 
     df = pd.read_csv(csv_path).fillna(0)
-    y_true = (df['id_i'] == df['id_j']).values.astype(bool)
+    y_true = (df["id_i"] == df["id_j"]).values.astype(bool)
     N = len(df)
     total_pos = int(y_true.sum())
     total_neg = N - total_pos
 
-    print(
-        f"Data: {N:,} rows | Positives: {total_pos:,} | Negatives: {total_neg:,}")
+    print(f"Data: {N:,} rows | Positives: {total_pos:,} | Negatives: {total_neg:,}")
     print(f"Baseline (predict all): P={total_pos / N:.4f}")
 
     # ════════════════════ DEFINE BUCKETS ════════════════════
     buckets = {
         "name": [
-            'name_score_containment', 'name_score_jaccard', 'name_score_lcs',
-            'name_score_levenshtein', 'name_score_sbert', 'average_name_score'
+            "name_score_containment",
+            "name_score_jaccard",
+            "name_score_lcs",
+            "name_score_levenshtein",
+            "name_score_sbert",
+            "average_name_score",
         ],
         "norm_name": [
-            'normalized_name_score_containment', 'normalized_name_score_jaccard',
-            'normalized_name_score_lcs', 'normalized_name_score_levenshtein',
-            'normalized_name_score_sbert', 'average_normalized_name_score'
+            "normalized_name_score_containment",
+            "normalized_name_score_jaccard",
+            "normalized_name_score_lcs",
+            "normalized_name_score_levenshtein",
+            "normalized_name_score_sbert",
+            "average_normalized_name_score",
         ],
         "misc": [
-            'property_type_score', 'name_unit_score',
-            'address_unit_score', 'supplier_score', 'star_ratings_score'
-        ]
+            "property_type_score",
+            "name_unit_score",
+            "address_unit_score",
+            "supplier_score",
+            "star_ratings_score",
+        ],
     }
 
     for bname in list(buckets.keys()):
@@ -88,15 +97,15 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         if not buckets[bname]:
             del buckets[bname]
 
-    name_feats = buckets.get('name', [])
-    norm_feats = buckets.get('norm_name', [])
-    misc_feats = buckets.get('misc', [])
+    name_feats = buckets.get("name", [])
+    norm_feats = buckets.get("norm_name", [])
+    misc_feats = buckets.get("misc", [])
     active_misc = [f for f in misc_feats if df[f].max() > 0.001]
     all_features = name_feats + norm_feats + misc_feats
 
     print(f"\nFeatures: {len(all_features)} across {len(buckets)} buckets")
     for bname, feats in buckets.items():
-        mode = "OR" if bname in ('name', 'norm_name') else "AND"
+        mode = "OR" if bname in ("name", "norm_name") else "AND"
         print(f"  {bname} ({mode}): {', '.join(feats)}")
     inactive = set(misc_feats) - set(active_misc)
     if inactive:
@@ -141,7 +150,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
     irr_mask = ~y_true.copy()
     for f in all_features:
         tp_max = float(col[f][y_true].max()) if y_true.any() else 0
-        irr_mask &= (col[f] >= tp_max)
+        irr_mask &= col[f] >= tp_max
     irr_idx = set(np.where(irr_mask)[0])
     IRR_FP = len(irr_idx)
 
@@ -151,11 +160,14 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         max_p = total_pos / (total_pos + IRR_FP)
         print(f"  {IRR_FP} irreducible FPs (score >= TP max on ALL features)")
         print(
-            f"  Max achievable precision: {total_pos}/{total_pos + IRR_FP} = {max_p:.4f}")
+            f"  Max achievable precision: {total_pos}/{total_pos + IRR_FP} = {max_p:.4f}"
+        )
         for idx in sorted(irr_idx):
             r = df.iloc[idx]
-            print(f"    Row {idx}: '{r.get('name_i', '?')}' vs '{r.get('name_j', '?')}' "
-                  f"(id_i={r['id_i']}, id_j={r['id_j']})")
+            print(
+                f"    Row {idx}: '{r.get('name_i', '?')}' vs '{r.get('name_j', '?')}' "
+                f"(id_i={r['id_i']}, id_j={r['id_j']})"
+            )
         print(f"  Target: maximize recall with FP = {IRR_FP}")
 
     # ════════════════════ clear STRUCTURED RULE SEARCH ════════════════════
@@ -177,16 +189,20 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             tp = int(np.sum(y_true & base_mask))
             fp = len(fp_idx)
             if tp > 0:
-                return ({'name': name_spec, 'norm': norm_spec, 'misc': {}},
-                        base_mask, tp, fp)
+                return (
+                    {"name": name_spec, "norm": norm_spec, "misc": {}},
+                    base_mask,
+                    tp,
+                    fp,
+                )
             return None
 
         # Determine primary features (already used in name/norm spec)
         used_primary = set()
-        if name_spec.get('mode') == 'single':
-            used_primary.add(name_spec['feature'])
-        if norm_spec.get('mode') == 'single':
-            used_primary.add(norm_spec['feature'])
+        if name_spec.get("mode") == "single":
+            used_primary.add(name_spec["feature"])
+        if norm_spec.get("mode") == "single":
+            used_primary.add(norm_spec["feature"])
 
         # Build elimination feature list: misc first, then name/norm individuals
         elim_features = []
@@ -258,12 +274,15 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             tp = int(np.sum(y_true & cur_mask))
             fp = int(np.sum(cur_mask & ~y_true))
             if tp > 0 and fp <= IRR_FP:
-                return ({'name': name_spec, 'norm': norm_spec,
-                         'misc': extra_thresholds},
-                        cur_mask, tp, fp)
+                return (
+                    {"name": name_spec, "norm": norm_spec, "misc": extra_thresholds},
+                    cur_mask,
+                    tp,
+                    fp,
+                )
         return None
 
-    NONE_SPEC = {'mode': 'none'}
+    NONE_SPEC = {"mode": "none"}
 
     # ── A. Bucket-OR combinations (name_OR AND norm_OR) ──
     print("  A. Bucket-OR: any(name >= t) AND any(norm >= t) + elimination...")
@@ -276,9 +295,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             if int(np.sum(y_true & base)) == 0:
                 continue
             result = try_eliminate_extra_fps(
-                base, irr_idx,
-                {'mode': 'OR', 'threshold': tn, 'features': name_feats},
-                {'mode': 'OR', 'threshold': tr, 'features': norm_feats})
+                base,
+                irr_idx,
+                {"mode": "OR", "threshold": tn, "features": name_feats},
+                {"mode": "OR", "threshold": tr, "features": norm_feats},
+            )
             if result:
                 spec, mask, tp, fp = result
                 key = f"A_{tn}_{tr}"
@@ -300,9 +321,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                 if int(np.sum(y_true & base)) == 0:
                     continue
                 result = try_eliminate_extra_fps(
-                    base, irr_idx,
-                    {'mode': 'OR', 'threshold': tn, 'features': name_feats},
-                    {'mode': 'single', 'threshold': tr, 'feature': nf})
+                    base,
+                    irr_idx,
+                    {"mode": "OR", "threshold": tn, "features": name_feats},
+                    {"mode": "single", "threshold": tr, "feature": nf},
+                )
                 if result:
                     spec, mask, tp, fp = result
                     key = f"B1_{tn}_{nf}_{tr}"
@@ -320,9 +343,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                 if int(np.sum(y_true & base)) == 0:
                     continue
                 result = try_eliminate_extra_fps(
-                    base, irr_idx,
-                    {'mode': 'single', 'threshold': tn, 'feature': nf},
-                    {'mode': 'OR', 'threshold': tr, 'features': norm_feats})
+                    base,
+                    irr_idx,
+                    {"mode": "single", "threshold": tn, "feature": nf},
+                    {"mode": "OR", "threshold": tr, "features": norm_feats},
+                )
                 if result:
                     spec, mask, tp, fp = result
                     key = f"B2_{nf}_{tn}_{tr}"
@@ -344,9 +369,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                     if int(np.sum(y_true & base)) == 0:
                         continue
                     result = try_eliminate_extra_fps(
-                        base, irr_idx,
-                        {'mode': 'single', 'threshold': tn, 'feature': nf},
-                        {'mode': 'single', 'threshold': tr, 'feature': rf})
+                        base,
+                        irr_idx,
+                        {"mode": "single", "threshold": tn, "feature": nf},
+                        {"mode": "single", "threshold": tr, "feature": rf},
+                    )
                     if result:
                         spec, mask, tp, fp = result
                         key = f"C_{nf}_{tn}_{rf}_{tr}"
@@ -365,9 +392,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         if int(np.sum(y_true & base)) == 0:
             continue
         result = try_eliminate_extra_fps(
-            base, irr_idx,
-            {'mode': 'OR', 'threshold': tn, 'features': name_feats},
-            NONE_SPEC)
+            base,
+            irr_idx,
+            {"mode": "OR", "threshold": tn, "features": name_feats},
+            NONE_SPEC,
+        )
         if result:
             spec, mask, tp, fp = result
             key = f"D_name_OR_{tn}"
@@ -382,9 +411,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         if int(np.sum(y_true & base)) == 0:
             continue
         result = try_eliminate_extra_fps(
-            base, irr_idx,
+            base,
+            irr_idx,
             NONE_SPEC,
-            {'mode': 'OR', 'threshold': tr, 'features': norm_feats})
+            {"mode": "OR", "threshold": tr, "features": norm_feats},
+        )
         if result:
             spec, mask, tp, fp = result
             key = f"D_norm_OR_{tr}"
@@ -400,9 +431,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             if int(np.sum(y_true & base)) == 0:
                 continue
             result = try_eliminate_extra_fps(
-                base, irr_idx,
-                {'mode': 'single', 'threshold': tn, 'feature': nf},
-                NONE_SPEC)
+                base,
+                irr_idx,
+                {"mode": "single", "threshold": tn, "feature": nf},
+                NONE_SPEC,
+            )
             if result:
                 spec, mask, tp, fp = result
                 key = f"D_{nf}_{tn}"
@@ -418,9 +451,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             if int(np.sum(y_true & base)) == 0:
                 continue
             result = try_eliminate_extra_fps(
-                base, irr_idx,
+                base,
+                irr_idx,
                 NONE_SPEC,
-                {'mode': 'single', 'threshold': tr, 'feature': rf})
+                {"mode": "single", "threshold": tr, "feature": rf},
+            )
             if result:
                 spec, mask, tp, fp = result
                 key = f"D_{rf}_{tr}"
@@ -440,11 +475,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                 continue
             # Determine which spec slot this feature belongs to
             if f in name_feats:
-                ns = {'mode': 'single', 'threshold': tk, 'feature': f}
+                ns = {"mode": "single", "threshold": tk, "feature": f}
                 rs = NONE_SPEC
             elif f in norm_feats:
                 ns = NONE_SPEC
-                rs = {'mode': 'single', 'threshold': tk, 'feature': f}
+                rs = {"mode": "single", "threshold": tk, "feature": f}
             else:
                 ns = NONE_SPEC
                 rs = NONE_SPEC
@@ -452,8 +487,8 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             if result:
                 spec, mask, tp, fp = result
                 # For misc features, store the base in misc dict too
-                if f in misc_feats and f not in spec['misc']:
-                    spec['misc'][f] = tk
+                if f in misc_feats and f not in spec["misc"]:
+                    spec["misc"][f] = tk
                 key = f"E_{f}_{tk}"
                 if key not in pool or tp > pool[key][2]:
                     pool[key] = (spec, mask, tp, fp)
@@ -468,17 +503,17 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         print(f"  Top 10 by TP:")
         for spec, _, tp, fp in top:
             parts = []
-            ns = spec['name']
-            if ns['mode'] == 'OR':
+            ns = spec["name"]
+            if ns["mode"] == "OR":
                 parts.append(f"any_name>={ns['threshold']}")
-            elif ns['mode'] == 'single':
+            elif ns["mode"] == "single":
                 parts.append(f"{ns['feature']}>={ns['threshold']}")
-            rs = spec['norm']
-            if rs['mode'] == 'OR':
+            rs = spec["norm"]
+            if rs["mode"] == "OR":
                 parts.append(f"any_norm>={rs['threshold']}")
-            elif rs['mode'] == 'single':
+            elif rs["mode"] == "single":
                 parts.append(f"{rs['feature']}>={rs['threshold']}")
-            for k, v in spec['misc'].items():
+            for k, v in spec["misc"].items():
                 parts.append(f"{k}>={v:.2f}")
             print(f"    TP={tp:>4d} FP={fp} | {' AND '.join(parts)}")
 
@@ -528,9 +563,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         fp_now = int(np.sum(combined & ~y_true))
         r = combined_tp / total_pos
         remaining = total_pos - combined_tp
-        print(f"  Step {step + 1}: +{best_dtp}TP -> TP={combined_tp} FP={fp_now} "
-              f"P={combined_tp / (combined_tp + fp_now):.4f} R={r:.4f} "
-              f"(remaining={remaining})")
+        print(
+            f"  Step {step + 1}: +{best_dtp}TP -> TP={combined_tp} FP={fp_now} "
+            f"P={combined_tp / (combined_tp + fp_now):.4f} R={r:.4f} "
+            f"(remaining={remaining})"
+        )
 
     # ════════════ PHASE 4.5: TARGETED SEARCH FOR UNCAPTURED ════════════
     uncaptured_pos = y_true & ~combined
@@ -538,8 +575,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
     if uncaptured_count > 0:
         print(f"\n{'=' * 90}")
-        print(
-            f"PHASE 4.5: Targeted search for {uncaptured_count} uncaptured positives")
+        print(f"PHASE 4.5: Targeted search for {uncaptured_count} uncaptured positives")
         print(f"{'=' * 90}")
         uncaptured_idx = np.where(uncaptured_pos)[0]
 
@@ -548,7 +584,7 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         for batch_start in range(0, len(uncaptured_idx), 50):
             if not (y_true & ~combined).any():
                 break
-            batch = uncaptured_idx[batch_start:batch_start + 50]
+            batch = uncaptured_idx[batch_start : batch_start + 50]
             batch = [ui for ui in batch if y_true[ui] and not combined[ui]]
             if not batch:
                 continue
@@ -570,19 +606,17 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                     new_tp = int(np.sum((y_true & ~combined) & mask))
                     if new_tp > 0:
                         if f in name_feats:
-                            ns = {'mode': 'single',
-                                  'threshold': t, 'feature': f}
+                            ns = {"mode": "single", "threshold": t, "feature": f}
                             rs = NONE_SPEC
                         elif f in norm_feats:
                             ns = NONE_SPEC
-                            rs = {'mode': 'single',
-                                  'threshold': t, 'feature': f}
+                            rs = {"mode": "single", "threshold": t, "feature": f}
                         else:
                             ns = NONE_SPEC
                             rs = NONE_SPEC
-                        spec = {'name': ns, 'norm': rs, 'misc': {}}
+                        spec = {"name": ns, "norm": rs, "misc": {}}
                         if f in misc_feats:
-                            spec['misc'][f] = t
+                            spec["misc"][f] = t
                         combined = combined | mask
                         combined_tp += new_tp
                         selected.append(spec)
@@ -591,9 +625,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                         fp_now = int(np.sum(combined & ~y_true))
                         r = combined_tp / total_pos
                         remaining = int((y_true & ~combined).sum())
-                        print(f"    Single({f}>={t:.4f}): +{new_tp}TP -> "
-                              f"TP={combined_tp} FP={fp_now} R={r:.4f} "
-                              f"(remaining={remaining})")
+                        print(
+                            f"    Single({f}>={t:.4f}): +{new_tp}TP -> "
+                            f"TP={combined_tp} FP={fp_now} R={r:.4f} "
+                            f"(remaining={remaining})"
+                        )
                         break
                 if combined[batch[0]] if batch else True:
                     break
@@ -626,20 +662,20 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                     f1, t1, f2, t2, pair_mask, new_tp = best_pair
                     misc_d = {}
                     if f1 in name_feats:
-                        ns = {'mode': 'single', 'threshold': t1, 'feature': f1}
+                        ns = {"mode": "single", "threshold": t1, "feature": f1}
                     else:
                         ns = NONE_SPEC
                         misc_d[f1] = t1
                     if f2 in norm_feats:
-                        rs = {'mode': 'single', 'threshold': t2, 'feature': f2}
-                    elif f2 in name_feats and ns['mode'] == 'none':
-                        ns = {'mode': 'single', 'threshold': t2, 'feature': f2}
+                        rs = {"mode": "single", "threshold": t2, "feature": f2}
+                    elif f2 in name_feats and ns["mode"] == "none":
+                        ns = {"mode": "single", "threshold": t2, "feature": f2}
                     else:
-                        rs = NONE_SPEC if 'rs' not in dir() or rs == NONE_SPEC else rs
+                        rs = NONE_SPEC if "rs" not in dir() or rs == NONE_SPEC else rs
                         misc_d[f2] = t2
-                    if 'rs' not in dir():
+                    if "rs" not in dir():
                         rs = NONE_SPEC
-                    spec = {'name': ns, 'norm': rs, 'misc': misc_d}
+                    spec = {"name": ns, "norm": rs, "misc": misc_d}
                     combined = combined | pair_mask
                     combined_tp += new_tp
                     selected.append(spec)
@@ -648,18 +684,23 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
                     fp_now = int(np.sum(combined & ~y_true))
                     r = combined_tp / total_pos
                     remaining = int((y_true & ~combined).sum())
-                    print(f"    Pair({f1}>={t1:.4f},{f2}>={t2:.4f}): +{new_tp}TP -> "
-                          f"TP={combined_tp} FP={fp_now} R={r:.4f} "
-                          f"(remaining={remaining})")
+                    print(
+                        f"    Pair({f1}>={t1:.4f},{f2}>={t2:.4f}): +{new_tp}TP -> "
+                        f"TP={combined_tp} FP={fp_now} R={r:.4f} "
+                        f"(remaining={remaining})"
+                    )
 
         uncaptured_final = int((y_true & ~combined).sum())
         if uncaptured_final > 0:
             print(
-                f"  {uncaptured_final} positives still uncaptured after targeted search")
+                f"  {uncaptured_final} positives still uncaptured after targeted search"
+            )
 
     if total_pos - combined_tp > 0:
-        print(f"\n  {total_pos - combined_tp} positives could not be captured "
-              f"with FP <= {IRR_FP}")
+        print(
+            f"\n  {total_pos - combined_tp} positives could not be captured "
+            f"with FP <= {IRR_FP}"
+        )
 
     # ════════════════════ PHASE 5: FINE-TUNE ════════════════════
     print(f"\n{'=' * 90}")
@@ -673,36 +714,36 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
         def build_mask_from_spec(spec):
             """Build numpy mask from a rule spec."""
-            ns = spec['name']
-            if ns.get('mode') == 'none':
+            ns = spec["name"]
+            if ns.get("mode") == "none":
                 m = np.ones(N, dtype=bool)
-            elif ns['mode'] == 'OR':
+            elif ns["mode"] == "OR":
                 m = np.zeros(N, dtype=bool)
-                if 'per_feat' in ns:
-                    for feat, t in ns['per_feat'].items():
-                        m |= (col[feat] >= t)
+                if "per_feat" in ns:
+                    for feat, t in ns["per_feat"].items():
+                        m |= col[feat] >= t
                 else:
-                    for feat in ns['features']:
-                        m |= (col[feat] >= ns['threshold'])
+                    for feat in ns["features"]:
+                        m |= col[feat] >= ns["threshold"]
             else:
-                m = col[ns['feature']] >= ns['threshold']
+                m = col[ns["feature"]] >= ns["threshold"]
 
-            rs = spec['norm']
-            if rs.get('mode') == 'none':
+            rs = spec["norm"]
+            if rs.get("mode") == "none":
                 pass  # no norm condition
-            elif rs['mode'] == 'OR':
+            elif rs["mode"] == "OR":
                 nm = np.zeros(N, dtype=bool)
-                if 'per_feat' in rs:
-                    for feat, t in rs['per_feat'].items():
-                        nm |= (col[feat] >= t)
+                if "per_feat" in rs:
+                    for feat, t in rs["per_feat"].items():
+                        nm |= col[feat] >= t
                 else:
-                    for feat in rs['features']:
-                        nm |= (col[feat] >= rs['threshold'])
+                    for feat in rs["features"]:
+                        nm |= col[feat] >= rs["threshold"]
                 m &= nm
             else:
-                m &= col[rs['feature']] >= rs['threshold']
+                m &= col[rs["feature"]] >= rs["threshold"]
 
-            for mf, mt in spec.get('misc', {}).items():
+            for mf, mt in spec.get("misc", {}).items():
                 if mt > 0:
                     m &= col[mf] >= mt
             return m
@@ -715,7 +756,8 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
         before = evaluate_all_rules()
         print(
-            f"  Before: P={before[0]:.4f} R={before[1]:.4f} TP={before[3]} FP={before[4]}")
+            f"  Before: P={before[0]:.4f} R={before[1]:.4f} TP={before[3]} FP={before[4]}"
+        )
 
         best_tp = before[3]
         improved = True
@@ -725,70 +767,71 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
             pass_n += 1
             for spec in selected:
                 # Tune name threshold
-                ns = spec['name']
-                if ns.get('mode') not in ('none',):
-                    orig = ns['threshold']
+                ns = spec["name"]
+                if ns.get("mode") not in ("none",):
+                    orig = ns["threshold"]
                     best_t_val = orig
                     for t in fine_t:
                         if abs(t - orig) > 0.25:
                             continue
-                        ns['threshold'] = float(t)
+                        ns["threshold"] = float(t)
                         m = evaluate_all_rules()
                         if m[4] <= IRR_FP and m[3] > best_tp:
                             best_tp = m[3]
                             best_t_val = float(t)
-                    ns['threshold'] = best_t_val
+                    ns["threshold"] = best_t_val
                     if best_t_val != orig:
                         improved = True
 
                 # Tune norm threshold
-                rs = spec['norm']
-                if rs.get('mode') not in ('none',):
-                    orig = rs['threshold']
+                rs = spec["norm"]
+                if rs.get("mode") not in ("none",):
+                    orig = rs["threshold"]
                     best_t_val = orig
                     for t in fine_t:
                         if abs(t - orig) > 0.25:
                             continue
-                        rs['threshold'] = float(t)
+                        rs["threshold"] = float(t)
                         m = evaluate_all_rules()
                         if m[4] <= IRR_FP and m[3] > best_tp:
                             best_tp = m[3]
                             best_t_val = float(t)
-                    rs['threshold'] = best_t_val
+                    rs["threshold"] = best_t_val
                     if best_t_val != orig:
                         improved = True
 
                 # Tune misc thresholds
-                for mf in list(spec.get('misc', {}).keys()):
-                    orig = spec['misc'][mf]
+                for mf in list(spec.get("misc", {}).keys()):
+                    orig = spec["misc"][mf]
                     best_t_val = orig
                     for t in fine_t:
                         if abs(t - orig) > 0.25:
                             continue
-                        spec['misc'][mf] = float(t)
+                        spec["misc"][mf] = float(t)
                         m = evaluate_all_rules()
                         if m[4] <= IRR_FP and m[3] > best_tp:
                             best_tp = m[3]
                             best_t_val = float(t)
-                    spec['misc'][mf] = best_t_val
+                    spec["misc"][mf] = best_t_val
                     if best_t_val != orig:
                         improved = True
 
         after = evaluate_all_rules()
         print(
-            f"  After:  P={after[0]:.4f} R={after[1]:.4f} TP={after[3]} FP={after[4]}")
+            f"  After:  P={after[0]:.4f} R={after[1]:.4f} TP={after[3]} FP={after[4]}"
+        )
 
         # ── Phase 5b: Per-feature thresholds within OR buckets ──
         print(f"\n  5b. Per-feature threshold tuning within OR buckets...")
         for spec in selected:
-            for bucket_key in ['name', 'norm']:
+            for bucket_key in ["name", "norm"]:
                 bs = spec[bucket_key]
-                if bs.get('mode') != 'OR':
+                if bs.get("mode") != "OR":
                     continue
-                shared_t = bs['threshold']
-                feats = bs['features']
+                shared_t = bs["threshold"]
+                feats = bs["features"]
                 per_feat = {f: shared_t for f in feats}
-                bs['per_feat'] = per_feat
+                bs["per_feat"] = per_feat
 
                 for feat in feats:
                     orig = per_feat[feat]
@@ -805,8 +848,10 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
         after_5b = evaluate_all_rules()
         if after_5b[3] > after[3]:
-            print(f"  After 5b: P={after_5b[0]:.4f} R={after_5b[1]:.4f} "
-                  f"TP={after_5b[3]} FP={after_5b[4]}")
+            print(
+                f"  After 5b: P={after_5b[0]:.4f} R={after_5b[1]:.4f} "
+                f"TP={after_5b[3]} FP={after_5b[4]}"
+            )
         else:
             print(f"  After 5b: no additional improvement")
 
@@ -824,33 +869,37 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
     for spec in selected:
         and_parts = []
 
-        ns = spec['name']
-        if ns.get('mode') == 'OR':
-            if 'per_feat' in ns:
-                name_ors = [f"{feat} >= {t:.4f}" for feat, t in ns['per_feat'].items()
-                            if t > 0]
+        ns = spec["name"]
+        if ns.get("mode") == "OR":
+            if "per_feat" in ns:
+                name_ors = [
+                    f"{feat} >= {t:.4f}" for feat, t in ns["per_feat"].items() if t > 0
+                ]
             else:
                 name_ors = [
-                    f"{feat} >= {ns['threshold']:.4f}" for feat in ns['features']]
+                    f"{feat} >= {ns['threshold']:.4f}" for feat in ns["features"]
+                ]
             if name_ors:
                 and_parts.append("(" + " OR ".join(name_ors) + ")")
-        elif ns.get('mode') == 'single':
+        elif ns.get("mode") == "single":
             and_parts.append(f"{ns['feature']} >= {ns['threshold']:.4f}")
 
-        rs = spec['norm']
-        if rs.get('mode') == 'OR':
-            if 'per_feat' in rs:
-                norm_ors = [f"{feat} >= {t:.4f}" for feat, t in rs['per_feat'].items()
-                            if t > 0]
+        rs = spec["norm"]
+        if rs.get("mode") == "OR":
+            if "per_feat" in rs:
+                norm_ors = [
+                    f"{feat} >= {t:.4f}" for feat, t in rs["per_feat"].items() if t > 0
+                ]
             else:
                 norm_ors = [
-                    f"{feat} >= {rs['threshold']:.4f}" for feat in rs['features']]
+                    f"{feat} >= {rs['threshold']:.4f}" for feat in rs["features"]
+                ]
             if norm_ors:
                 and_parts.append("(" + " OR ".join(norm_ors) + ")")
-        elif rs.get('mode') == 'single':
+        elif rs.get("mode") == "single":
             and_parts.append(f"{rs['feature']} >= {rs['threshold']:.4f}")
 
-        for mf, mt in spec.get('misc', {}).items():
+        for mf, mt in spec.get("misc", {}).items():
             if mt > 0:
                 and_parts.append(f"{mf} >= {mt:.4f}")
 
@@ -859,8 +908,11 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
     if len(or_parts) > 1:
         where_str = ("\n    OR\n      ").join(
-            [f"({part})" if "\n" in part or " AND " in part else part
-             for part in or_parts])
+            [
+                f"({part})" if "\n" in part or " AND " in part else part
+                for part in or_parts
+            ]
+        )
     elif len(or_parts) == 1:
         where_str = or_parts[0]
     else:
@@ -884,11 +936,15 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
         if r == 1.0:
             print("PERFECT 100% PRECISION + 100% RECALL!")
         else:
-            print(f"100% PRECISION with {r * 100:.2f}% recall "
-                  f"(TP={tp} FN={fn}, 0 false positives)")
+            print(
+                f"100% PRECISION with {r * 100:.2f}% recall "
+                f"(TP={tp} FN={fn}, 0 false positives)"
+            )
     elif fp <= IRR_FP:
-        print(f"BEST ACHIEVABLE: P={p * 100:.2f}% R={r * 100:.2f}% "
-              f"(FP={fp} = irreducible minimum of {IRR_FP})")
+        print(
+            f"BEST ACHIEVABLE: P={p * 100:.2f}% R={r * 100:.2f}% "
+            f"(FP={fp} = irreducible minimum of {IRR_FP})"
+        )
     else:
         print(f"Best: P={p * 100:.2f}%  R={r * 100:.2f}%  F1={f1:.4f}")
     print(f"Time: {elapsed:.1f}s")
@@ -896,4 +952,4 @@ def find_optimal_where_clause(csv_path: str, beam_width: int = 30):
 
 
 if __name__ == "__main__":
-    find_optimal_where_clause('/Users/nakul.patil/Downloads/hotels.csv')
+    find_optimal_where_clause("/Users/nakul.patil/Downloads/hotels.csv")

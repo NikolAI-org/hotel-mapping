@@ -4,6 +4,7 @@ from typing import TypeVar, Generic, Tuple
 
 T = TypeVar("T")
 
+
 class BaseProcessor(ABC, Generic[T]):
     @abstractmethod
     def process(self, df: DataFrame, prefix: str = "") -> T:

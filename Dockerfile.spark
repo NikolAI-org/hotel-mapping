@@ -1,7 +1,7 @@
 # Custom Spark image with Python 3.11 to match Airflow
-ARG DOCKER_PLATFORM=linux/amd64
-ARG JAVA_HOME_PATH=/usr/lib/jvm/java-17-openjdk-amd64
-FROM --platform=${DOCKER_PLATFORM} python:3.11-slim-bookworm
+ARG DOCKER_PLATFORM
+ARG JAVA_HOME_PATH
+FROM python:3.11-slim-bookworm
 
 USER root
 

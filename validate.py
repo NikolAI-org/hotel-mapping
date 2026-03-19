@@ -31,8 +31,11 @@ def check_airflow():
     """Check if Airflow webserver is accessible"""
     try:
         response = requests.get("http://localhost:8080/health", timeout=5)
-        return print_result("Airflow", response.status_code == 200,
-                            f"Status code: {response.status_code}")
+        return print_result(
+            "Airflow",
+            response.status_code == 200,
+            f"Status code: {response.status_code}",
+        )
     except requests.exceptions.RequestException as e:
         return print_result("Airflow", False, f"Connection failed: {str(e)}")
 
@@ -41,8 +44,9 @@ def check_spark():
     """Check if Spark Master is accessible"""
     try:
         response = requests.get("http://localhost:8081", timeout=5)
-        return print_result("Spark Master", response.status_code == 200,
-                            f"UI accessible")
+        return print_result(
+            "Spark Master", response.status_code == 200, f"UI accessible"
+        )
     except requests.exceptions.RequestException as e:
         return print_result("Spark Master", False, f"Connection failed: {str(e)}")
 
@@ -54,7 +58,7 @@ def check_minio():
             "localhost:9000",
             access_key="minioadmin",
             secret_key="minioadmin",
-            secure=False
+            secure=False,
         )
 
         # Check if MinIO is accessible
@@ -63,15 +67,16 @@ def check_minio():
 
         # Check required buckets
         required_buckets = ["data-lake", "delta-lake"]
-        missing_buckets = [
-            b for b in required_buckets if b not in bucket_names]
+        missing_buckets = [b for b in required_buckets if b not in bucket_names]
 
         if missing_buckets:
-            return print_result("MinIO", False,
-                                f"Missing buckets: {', '.join(missing_buckets)}")
+            return print_result(
+                "MinIO", False, f"Missing buckets: {', '.join(missing_buckets)}"
+            )
         else:
-            return print_result("MinIO", True,
-                                f"Buckets exist: {', '.join(bucket_names)}")
+            return print_result(
+                "MinIO", True, f"Buckets exist: {', '.join(bucket_names)}"
+            )
     except S3Error as e:
         return print_result("MinIO", False, f"S3 Error: {str(e)}")
     except Exception as e:
@@ -82,8 +87,9 @@ def check_minio_console():
     """Check if MinIO console is accessible"""
     try:
         response = requests.get("http://localhost:9001", timeout=5)
-        return print_result("MinIO Console", response.status_code == 200,
-                            "UI accessible")
+        return print_result(
+            "MinIO Console", response.status_code == 200, "UI accessible"
+        )
     except requests.exceptions.RequestException as e:
         return print_result("MinIO Console", False, f"Connection failed: {str(e)}")
 
@@ -92,20 +98,22 @@ def check_postgres():
     """Check if PostgreSQL is accessible"""
     try:
         import psycopg2
+
         conn = psycopg2.connect(
             host="localhost",
             port=5432,
             database="airflow",
             user="airflow",
             password="airflow",
-            connect_timeout=5
+            connect_timeout=5,
         )
         conn.close()
         return print_result("PostgreSQL", True, "Database accessible")
     except Exception as e:
         # PostgreSQL might not be exposed, which is okay
-        return print_result("PostgreSQL", True,
-                            "Not exposed externally (expected in Docker network)")
+        return print_result(
+            "PostgreSQL", True, "Not exposed externally (expected in Docker network)"
+        )
 
 
 def print_access_info():
@@ -194,5 +202,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\n✗ Unexpected error: {str(e)}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

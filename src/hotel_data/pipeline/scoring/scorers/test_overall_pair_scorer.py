@@ -28,6 +28,7 @@ from typing import Dict, Any
 # Pure-Python scorer (mirrors overall_pair_scorer.py logic)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _signal_score(value: float, threshold: float, comparator: str) -> float:
     t = float(threshold)
     v = float(value)
@@ -77,37 +78,71 @@ _MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "name_score_containment",
-                    "threshold": 0.95, "comparator": "gte"},
-                {"signal": "name_score_jaccard",
-                    "threshold": 0.90, "comparator": "gte"},
-                {"signal": "name_score_lcs",
-                    "threshold": 0.90, "comparator": "gte"},
-                {"signal": "name_score_sbert",
-                    "threshold": 0.90, "comparator": "gte"},
-                {"signal": "name_score_levenshtein",
-                    "threshold": 0.90, "comparator": "gte"},
-                {"signal": "normalized_name_score_jaccard",
-                    "threshold": 0.95, "comparator": "gte"},
-                {"signal": "normalized_name_score_lcs",
-                    "threshold": 0.95, "comparator": "gte"},
-                {"signal": "normalized_name_score_levenshtein",
-                    "threshold": 0.95, "comparator": "gte"},
-                {"signal": "normalized_name_score_sbert",
-                    "threshold": 0.95, "comparator": "gte"},
-                {"signal": "average_name_score",
-                    "threshold": 0.80, "comparator": "gte"},
-                {"signal": "average_normalized_name_score",
-                    "threshold": 0.90, "comparator": "gte"},
+                {
+                    "signal": "name_score_containment",
+                    "threshold": 0.95,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "name_score_jaccard",
+                    "threshold": 0.90,
+                    "comparator": "gte",
+                },
+                {"signal": "name_score_lcs", "threshold": 0.90, "comparator": "gte"},
+                {"signal": "name_score_sbert", "threshold": 0.90, "comparator": "gte"},
+                {
+                    "signal": "name_score_levenshtein",
+                    "threshold": 0.90,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "normalized_name_score_jaccard",
+                    "threshold": 0.95,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "normalized_name_score_lcs",
+                    "threshold": 0.95,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "normalized_name_score_levenshtein",
+                    "threshold": 0.95,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "normalized_name_score_sbert",
+                    "threshold": 0.95,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "average_name_score",
+                    "threshold": 0.80,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "average_normalized_name_score",
+                    "threshold": 0.90,
+                    "comparator": "gte",
+                },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "normalized_name_score_containment",
-                            "threshold": 1.0,  "comparator": "gte"},
-                        {"signal": "name_score_sbert",
-                            "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "geo_distance_km",
-                            "threshold": 0.2,  "comparator": "lte"},
+                        {
+                            "signal": "normalized_name_score_containment",
+                            "threshold": 1.0,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "name_score_sbert",
+                            "threshold": 0.75,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "geo_distance_km",
+                            "threshold": 0.2,
+                            "comparator": "lte",
+                        },
                     ],
                 },
             ],
@@ -116,18 +151,23 @@ _MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "address_line1_score",
-                    "threshold": 0.5, "comparator": "gte"},
-                {"signal": "address_sbert_score",
-                    "threshold": 0.5, "comparator": "gte"},
-                {"signal": "geo_distance_km",
-                    "threshold": 0.2, "comparator": "lte"},
+                {
+                    "signal": "address_line1_score",
+                    "threshold": 0.5,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "address_sbert_score",
+                    "threshold": 0.5,
+                    "comparator": "gte",
+                },
+                {"signal": "geo_distance_km", "threshold": 0.2, "comparator": "lte"},
             ],
         },
         # Group 3: property type
         {"signal": "property_type_score", "threshold": 0.8, "comparator": "gte"},
         # Group 4a: name unit
-        {"signal": "name_unit_score",    "threshold": 0.5, "comparator": "gte"},
+        {"signal": "name_unit_score", "threshold": 0.5, "comparator": "gte"},
         # Group 4b: address unit
         {"signal": "address_unit_score", "threshold": 0.5, "comparator": "gte"},
     ],
@@ -143,37 +183,39 @@ def overall_pair_score(pair: Dict[str, Any]) -> float:
 # Helper: build a baseline pair where every score is exactly at its threshold
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _at_threshold() -> Dict[str, float]:
     """All signals set to their config thresholds → expected score = 0.75."""
     return {
         # Group 1 — any one signal at its threshold is enough for the OR
-        "name_score_containment":             0.95,
-        "name_score_jaccard":                 0.90,
-        "name_score_lcs":                     0.90,
-        "name_score_sbert":                   0.90,
-        "name_score_levenshtein":             0.90,
-        "normalized_name_score_jaccard":      0.95,
-        "normalized_name_score_lcs":          0.95,
-        "normalized_name_score_levenshtein":  0.95,
-        "normalized_name_score_sbert":        0.95,
-        "average_name_score":                 0.80,
-        "average_normalized_name_score":      0.90,
-        "normalized_name_score_containment":  1.00,
+        "name_score_containment": 0.95,
+        "name_score_jaccard": 0.90,
+        "name_score_lcs": 0.90,
+        "name_score_sbert": 0.90,
+        "name_score_levenshtein": 0.90,
+        "normalized_name_score_jaccard": 0.95,
+        "normalized_name_score_lcs": 0.95,
+        "normalized_name_score_levenshtein": 0.95,
+        "normalized_name_score_sbert": 0.95,
+        "average_name_score": 0.80,
+        "average_normalized_name_score": 0.90,
+        "normalized_name_score_containment": 1.00,
         # Group 2
-        "address_line1_score":                0.50,
-        "address_sbert_score":                0.50,
-        "geo_distance_km":                    0.20,
+        "address_line1_score": 0.50,
+        "address_sbert_score": 0.50,
+        "geo_distance_km": 0.20,
         # Group 3
-        "property_type_score":                0.80,
+        "property_type_score": 0.80,
         # Group 4
-        "name_unit_score":                    0.50,
-        "address_unit_score":                 0.50,
+        "name_unit_score": 0.50,
+        "address_unit_score": 0.50,
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test helper
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _approx(a: float, b: float, tol: float = 1e-4) -> bool:
     return abs(a - b) <= tol
@@ -257,24 +299,24 @@ class TestOverallPairScore(unittest.TestCase):
 
     def test_perfect_match_yields_close_to_1(self):
         pair = {
-            "name_score_containment":             1.0,
-            "name_score_jaccard":                 1.0,
-            "name_score_lcs":                     1.0,
-            "name_score_sbert":                   1.0,
-            "name_score_levenshtein":             1.0,
-            "normalized_name_score_jaccard":      1.0,
-            "normalized_name_score_lcs":          1.0,
-            "normalized_name_score_levenshtein":  1.0,
-            "normalized_name_score_sbert":        1.0,
-            "average_name_score":                 1.0,
-            "average_normalized_name_score":      1.0,
-            "normalized_name_score_containment":  1.0,
-            "address_line1_score":                1.0,
-            "address_sbert_score":                1.0,
-            "geo_distance_km":                    0.0,
-            "property_type_score":                1.0,
-            "name_unit_score":                    1.0,
-            "address_unit_score":                 1.0,
+            "name_score_containment": 1.0,
+            "name_score_jaccard": 1.0,
+            "name_score_lcs": 1.0,
+            "name_score_sbert": 1.0,
+            "name_score_levenshtein": 1.0,
+            "normalized_name_score_jaccard": 1.0,
+            "normalized_name_score_lcs": 1.0,
+            "normalized_name_score_levenshtein": 1.0,
+            "normalized_name_score_sbert": 1.0,
+            "average_name_score": 1.0,
+            "average_normalized_name_score": 1.0,
+            "normalized_name_score_containment": 1.0,
+            "address_line1_score": 1.0,
+            "address_sbert_score": 1.0,
+            "geo_distance_km": 0.0,
+            "property_type_score": 1.0,
+            "name_unit_score": 1.0,
+            "address_unit_score": 1.0,
         }
         s = overall_pair_score(pair)
         self.assertGreater(s, 0.95, f"Perfect match should be > 0.95, got {s}")
@@ -285,18 +327,23 @@ class TestOverallPairScore(unittest.TestCase):
         pair = _at_threshold()
         # Boost all name scores to near-perfect
         for k in [
-            "name_score_containment", "name_score_jaccard", "name_score_lcs",
-            "name_score_sbert", "name_score_levenshtein",
-            "normalized_name_score_jaccard", "normalized_name_score_lcs",
-            "normalized_name_score_levenshtein", "normalized_name_score_sbert",
-            "average_name_score", "average_normalized_name_score",
+            "name_score_containment",
+            "name_score_jaccard",
+            "name_score_lcs",
+            "name_score_sbert",
+            "name_score_levenshtein",
+            "normalized_name_score_jaccard",
+            "normalized_name_score_lcs",
+            "normalized_name_score_levenshtein",
+            "normalized_name_score_sbert",
+            "average_name_score",
+            "average_normalized_name_score",
         ]:
             pair[k] = 1.0
         s = overall_pair_score(pair)
         # All groups pass ≥ 0.75 → mean kicks in; Group1 = 1.0 lifts the overall
         # above 0.75.  mean(1.0, 0.75, 0.75, 0.75, 0.75) = 0.80 > 0.75.
-        self.assertGreater(
-            s, 0.75, f"Strong name match should exceed 0.75, got {s}")
+        self.assertGreater(s, 0.75, f"Strong name match should exceed 0.75, got {s}")
 
     # ── Weak signals: property_type_score below threshold ────────────────────
 
@@ -307,7 +354,8 @@ class TestOverallPairScore(unittest.TestCase):
         s_pass = overall_pair_score(pair_pass)
         s_weak = overall_pair_score(pair_weak)
         self.assertLess(
-            s_weak, s_pass, "Weak property_type_score should lower overall score")
+            s_weak, s_pass, "Weak property_type_score should lower overall score"
+        )
 
     # ── Only geo_distance_km passes address group, nothing else ─────────────
 
@@ -320,8 +368,7 @@ class TestOverallPairScore(unittest.TestCase):
         s = overall_pair_score(pair)
         # All groups pass ≥ 0.75 → mean; Group2 geo = 1.0 lifts the overall.
         # mean(0.75, 1.0, 0.75, 0.75, 0.75) = 0.80 > 0.75.
-        self.assertGreater(
-            s, 0.75, f"Perfect geo should yield score > 0.75, got {s}")
+        self.assertGreater(s, 0.75, f"Perfect geo should yield score > 0.75, got {s}")
 
     # ── Address group fails (no signal passes) ───────────────────────────────
 
@@ -333,8 +380,7 @@ class TestOverallPairScore(unittest.TestCase):
         pair_fail["geo_distance_km"] = 5.0  # far away
         s_pass = overall_pair_score(pair_pass)
         s_fail = overall_pair_score(pair_fail)
-        self.assertLess(
-            s_fail, s_pass, "Failing address group should lower score")
+        self.assertLess(s_fail, s_pass, "Failing address group should lower score")
 
     # ── name_unit_score below threshold ──────────────────────────────────────
 
@@ -345,7 +391,8 @@ class TestOverallPairScore(unittest.TestCase):
         s_pass = overall_pair_score(pair_pass)
         s_weak = overall_pair_score(pair_weak)
         self.assertLess(
-            s_weak, s_pass, "Weak name_unit_score should lower overall score")
+            s_weak, s_pass, "Weak name_unit_score should lower overall score"
+        )
 
     # ── address_unit_score below threshold ───────────────────────────────────
 
@@ -356,7 +403,8 @@ class TestOverallPairScore(unittest.TestCase):
         s_pass = overall_pair_score(pair_pass)
         s_weak = overall_pair_score(pair_weak)
         self.assertLess(
-            s_weak, s_pass, "Weak address_unit_score should lower overall score")
+            s_weak, s_pass, "Weak address_unit_score should lower overall score"
+        )
 
     # ── Name group: only one signal passes but barely ────────────────────────
 
@@ -364,10 +412,15 @@ class TestOverallPairScore(unittest.TestCase):
         pair = _at_threshold()
         # Zero out all name signals except containment which stays at threshold
         for k in [
-            "name_score_jaccard", "name_score_lcs", "name_score_sbert",
-            "name_score_levenshtein", "normalized_name_score_jaccard",
-            "normalized_name_score_lcs", "normalized_name_score_levenshtein",
-            "normalized_name_score_sbert", "average_name_score",
+            "name_score_jaccard",
+            "name_score_lcs",
+            "name_score_sbert",
+            "name_score_levenshtein",
+            "normalized_name_score_jaccard",
+            "normalized_name_score_lcs",
+            "normalized_name_score_levenshtein",
+            "normalized_name_score_sbert",
+            "average_name_score",
             "average_normalized_name_score",
         ]:
             pair[k] = 0.0
@@ -398,12 +451,21 @@ class TestOverallPairScore(unittest.TestCase):
             {
                 "operator": "AND",
                 "rules": [
-                    {"signal": "normalized_name_score_containment",
-                        "threshold": 1.0,  "comparator": "gte"},
-                    {"signal": "name_score_sbert",
-                        "threshold": 0.75, "comparator": "gte"},
-                    {"signal": "geo_distance_km",
-                        "threshold": 0.2,  "comparator": "lte"},
+                    {
+                        "signal": "normalized_name_score_containment",
+                        "threshold": 1.0,
+                        "comparator": "gte",
+                    },
+                    {
+                        "signal": "name_score_sbert",
+                        "threshold": 0.75,
+                        "comparator": "gte",
+                    },
+                    {
+                        "signal": "geo_distance_km",
+                        "threshold": 0.2,
+                        "comparator": "lte",
+                    },
                 ],
             },
             pair,
@@ -424,7 +486,8 @@ class TestOverallPairScore(unittest.TestCase):
         pair["geo_distance_km"] = 100.0  # worst case for lte — very far apart
         s = overall_pair_score(pair)
         self.assertLess(
-            s, 0.1, f"All-worst signals should give very low score, got {s}")
+            s, 0.1, f"All-worst signals should give very low score, got {s}"
+        )
 
     # ── Score is monotone: better signals → higher overall ──────────────────
 
@@ -437,7 +500,8 @@ class TestOverallPairScore(unittest.TestCase):
         s_base = overall_pair_score(base)
         s_better = overall_pair_score(better)
         self.assertGreaterEqual(
-            s_better, s_base, "Improving signals must not lower overall score")
+            s_better, s_base, "Improving signals must not lower overall score"
+        )
 
     # ── Score is monotone: worse signals → lower overall ────────────────────
 
@@ -450,7 +514,8 @@ class TestOverallPairScore(unittest.TestCase):
         s_base = overall_pair_score(base)
         s_worse = overall_pair_score(worse)
         self.assertLessEqual(
-            s_worse, s_base, "Worsening signals must not raise overall score")
+            s_worse, s_base, "Worsening signals must not raise overall score"
+        )
 
     # ── Concrete pair: property_type above threshold lifts overall above 0.75 ─
     # name_score_containment=0.95  → exactly at threshold → 0.75  (wins Group1 OR)
@@ -465,14 +530,14 @@ class TestOverallPairScore(unittest.TestCase):
 
     def test_containment_at_threshold_with_high_property_yields_0_775(self):
         pair = {
-            "name_score_containment":         0.95,
-            "name_score_jaccard":             0.80,
-            "normalized_name_score_jaccard":  0.90,
-            "average_name_score":             0.79,
-            "geo_distance_km":                0.20,
-            "property_type_score":            0.90,
-            "name_unit_score":                0.50,
-            "address_unit_score":             0.50,
+            "name_score_containment": 0.95,
+            "name_score_jaccard": 0.80,
+            "normalized_name_score_jaccard": 0.90,
+            "average_name_score": 0.79,
+            "geo_distance_km": 0.20,
+            "property_type_score": 0.90,
+            "name_unit_score": 0.50,
+            "address_unit_score": 0.50,
         }
         s = overall_pair_score(pair)
         self.assertTrue(
@@ -492,14 +557,14 @@ class TestOverallPairScore(unittest.TestCase):
 
     def test_containment_just_below_threshold_yields_below_0_75(self):
         pair = {
-            "name_score_containment":         0.94,
-            "name_score_jaccard":             0.80,
-            "normalized_name_score_jaccard":  0.90,
-            "average_name_score":             0.78,
-            "geo_distance_km":                0.20,
-            "property_type_score":            0.90,
-            "name_unit_score":                0.50,
-            "address_unit_score":             0.50,
+            "name_score_containment": 0.94,
+            "name_score_jaccard": 0.80,
+            "normalized_name_score_jaccard": 0.90,
+            "average_name_score": 0.78,
+            "geo_distance_km": 0.20,
+            "property_type_score": 0.90,
+            "name_unit_score": 0.50,
+            "address_unit_score": 0.50,
         }
         s = overall_pair_score(pair)
         expected = round(0.75 * 0.94 / 0.95, 6)  # ≈ 0.742105
@@ -507,8 +572,7 @@ class TestOverallPairScore(unittest.TestCase):
             _approx(s, expected, tol=1e-3),
             f"Expected ~{expected} (name just below threshold), got {s}",
         )
-        self.assertLess(
-            s, 0.75, "Missing name threshold must drive overall below 0.75")
+        self.assertLess(s, 0.75, "Missing name threshold must drive overall below 0.75")
 
     # ── Score is always in [0, 1] ────────────────────────────────────────────
 
@@ -520,7 +584,7 @@ class TestOverallPairScore(unittest.TestCase):
         ]:
             s = overall_pair_score(pair)
             self.assertGreaterEqual(s, 0.0, f"Score {s} below 0")
-            self.assertLessEqual(s, 1.0,   f"Score {s} above 1")
+            self.assertLessEqual(s, 1.0, f"Score {s} above 1")
 
 
 if __name__ == "__main__":

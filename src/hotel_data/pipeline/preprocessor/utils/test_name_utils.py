@@ -35,24 +35,28 @@ functions_mod = sys.modules["pyspark.sql.functions"]
 types_mod = sys.modules["pyspark.sql.types"]
 
 if not hasattr(functions_mod, "udf"):
+
     def _identity_udf(fn, _return_type=None):
         return fn
 
     functions_mod.udf = _identity_udf
 
 if not hasattr(functions_mod, "col"):
+
     def _identity_col(name):
         return name
 
     functions_mod.col = _identity_col
 
 if not hasattr(types_mod, "FloatType"):
+
     class _FloatType:
         pass
 
     types_mod.FloatType = _FloatType
 
 if not hasattr(types_mod, "StringType"):
+
     class _StringType:
         pass
 

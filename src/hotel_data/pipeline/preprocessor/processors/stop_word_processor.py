@@ -6,6 +6,7 @@ from typing import List
 from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+
 # Reuse the same stop words list from your scorer to ensure consistency
 from hotel_data.pipeline.preprocessor.utils.name_utils import enhanced_name_scorer
 
@@ -34,13 +35,12 @@ def remove_stop_words(text: str) -> str:
 
 
 class StopWordProcessor(BaseProcessor[DataFrame]):
-    def __init__(self, input_col: str = "normalized_name", output_col: str = "normalized_name"):
+    def __init__(
+        self, input_col: str = "normalized_name", output_col: str = "normalized_name"
+    ):
         self.input_col = input_col
         self.output_col = output_col
         self.stop_word_udf = F.udf(remove_stop_words, StringType())
 
     def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
-        return df.withColumn(
-            self.output_col,
-            self.stop_word_udf(F.col(self.input_col))
-        )
+        return df.withColumn(self.output_col, self.stop_word_udf(F.col(self.input_col)))

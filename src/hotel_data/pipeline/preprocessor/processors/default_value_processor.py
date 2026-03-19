@@ -3,9 +3,16 @@ from pyspark.sql import DataFrame
 from pyspark.sql.column import Column as SparkColumn
 from pyspark.sql import functions as F
 from pyspark.sql.functions import concat_ws, regexp_replace, col
-from pyspark.sql.types import StringType, NumericType, BooleanType, TimestampType, DateType
+from pyspark.sql.types import (
+    StringType,
+    NumericType,
+    BooleanType,
+    TimestampType,
+    DateType,
+)
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
+
 
 class DefaultValueProcessor(BaseProcessor[DataFrame]):
     def __init__(self, critical_fields=None, type_defaults=None):
@@ -27,7 +34,7 @@ class DefaultValueProcessor(BaseProcessor[DataFrame]):
             NumericType: 0,
             BooleanType: False,
             TimestampType: F.current_timestamp(),
-            DateType: F.current_date()
+            DateType: F.current_date(),
         }
 
     def process(self, df, prefix: str = ""):
@@ -51,13 +58,16 @@ class DefaultValueProcessor(BaseProcessor[DataFrame]):
                 if isinstance(default, SparkColumn):
                     df = df.withColumn(
                         col_name,
-                        F.when(F.col(col_name).isNull(), default).otherwise(F.col(col_name))
+                        F.when(F.col(col_name).isNull(), default).otherwise(
+                            F.col(col_name)
+                        ),
                     )
                 else:
                     df = df.withColumn(
                         col_name,
-                        F.when(F.col(col_name).isNull() | (F.col(col_name) == ""), F.lit(default))
-                         .otherwise(F.col(col_name))
+                        F.when(
+                            F.col(col_name).isNull() | (F.col(col_name) == ""),
+                            F.lit(default),
+                        ).otherwise(F.col(col_name)),
                     )
         return df
-    

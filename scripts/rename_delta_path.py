@@ -77,9 +77,15 @@ def ensure_boto3_available():
         raise
 
 
-def s3_copy_prefix(source: str, dest: str, dry_run: bool = True, endpoint_url: str = None,
-                   aws_access_key_id: str = None, aws_secret_access_key: str = None,
-                   aws_region: str = None) -> Tuple[int, int]:
+def s3_copy_prefix(
+    source: str,
+    dest: str,
+    dry_run: bool = True,
+    endpoint_url: str = None,
+    aws_access_key_id: str = None,
+    aws_secret_access_key: str = None,
+    aws_region: str = None,
+) -> Tuple[int, int]:
     """Copy all objects under source prefix to dest prefix. Returns (copied_count, errored_count)."""
     ensure_boto3_available()
     import boto3
@@ -110,16 +116,15 @@ def s3_copy_prefix(source: str, dest: str, dry_run: bool = True, endpoint_url: s
     for page in page_iter:
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            rel_key = key[len(prefix_src):] if key.startswith(
-                prefix_src) else key
+            rel_key = key[len(prefix_src) :] if key.startswith(prefix_src) else key
             new_key = prefix_dst + rel_key
-            print(
-                f"COPY s3://{bucket_src}/{key} -> s3://{bucket_dst}/{new_key}")
+            print(f"COPY s3://{bucket_src}/{key} -> s3://{bucket_dst}/{new_key}")
             if not dry_run:
                 try:
                     copy_source = {"Bucket": bucket_src, "Key": key}
-                    s3.copy_object(Bucket=bucket_dst, Key=new_key,
-                                   CopySource=copy_source)
+                    s3.copy_object(
+                        Bucket=bucket_dst, Key=new_key, CopySource=copy_source
+                    )
                     copied += 1
                 except ClientError as ce:
                     print(f"ERROR copying {key}: {ce}")
@@ -127,9 +132,14 @@ def s3_copy_prefix(source: str, dest: str, dry_run: bool = True, endpoint_url: s
     return copied, errors
 
 
-def s3_delete_prefix(source: str, dry_run: bool = True, endpoint_url: str = None,
-                     aws_access_key_id: str = None, aws_secret_access_key: str = None,
-                     aws_region: str = None) -> Tuple[int, int]:
+def s3_delete_prefix(
+    source: str,
+    dry_run: bool = True,
+    endpoint_url: str = None,
+    aws_access_key_id: str = None,
+    aws_secret_access_key: str = None,
+    aws_region: str = None,
+) -> Tuple[int, int]:
     """Delete all objects under source prefix. Returns (deleted_count, errored_count)."""
     ensure_boto3_available()
     import boto3
@@ -167,7 +177,8 @@ def s3_delete_prefix(source: str, dry_run: bool = True, endpoint_url: str = None
                 if len(batch) >= 1000:
                     try:
                         resp = s3.delete_objects(
-                            Bucket=bucket_src, Delete={"Objects": batch})
+                            Bucket=bucket_src, Delete={"Objects": batch}
+                        )
                         deleted += len(batch)
                         batch = []
                     except ClientError as ce:
@@ -175,8 +186,7 @@ def s3_delete_prefix(source: str, dry_run: bool = True, endpoint_url: str = None
                         errors += 1
     if batch and not dry_run:
         try:
-            resp = s3.delete_objects(
-                Bucket=bucket_src, Delete={"Objects": batch})
+            resp = s3.delete_objects(Bucket=bucket_src, Delete={"Objects": batch})
             deleted += len(batch)
         except ClientError as ce:
             print(f"ERROR deleting final batch: {ce}")
@@ -246,30 +256,50 @@ def main():
         # Handle copy-only mode: perform copies but keep source intact.
         if COPY_ONLY:
             print("COPY_ONLY=True — performing object copies and skipping deletes")
-            copied, copy_err = s3_copy_prefix(src, dst, dry_run=False, endpoint_url=endpoint,
-                                              aws_access_key_id=ak, aws_secret_access_key=sk,
-                                              aws_region=region)
+            copied, copy_err = s3_copy_prefix(
+                src,
+                dst,
+                dry_run=False,
+                endpoint_url=endpoint,
+                aws_access_key_id=ak,
+                aws_secret_access_key=sk,
+                aws_region=region,
+            )
             print(f"Copy completed: copied={copied}, errors={copy_err}")
             print("Source objects left intact (no deletes performed).")
         else:
-            copied, copy_err = s3_copy_prefix(src, dst, dry_run=dry, endpoint_url=endpoint,
-                                              aws_access_key_id=ak, aws_secret_access_key=sk,
-                                              aws_region=region)
+            copied, copy_err = s3_copy_prefix(
+                src,
+                dst,
+                dry_run=dry,
+                endpoint_url=endpoint,
+                aws_access_key_id=ak,
+                aws_secret_access_key=sk,
+                aws_region=region,
+            )
             print(f"Copy completed: copied={copied}, errors={copy_err}")
             if not dry:
-                deleted, del_err = s3_delete_prefix(src, dry_run=dry, endpoint_url=endpoint,
-                                                    aws_access_key_id=ak, aws_secret_access_key=sk,
-                                                    aws_region=region)
+                deleted, del_err = s3_delete_prefix(
+                    src,
+                    dry_run=dry,
+                    endpoint_url=endpoint,
+                    aws_access_key_id=ak,
+                    aws_secret_access_key=sk,
+                    aws_region=region,
+                )
                 print(f"Delete completed: deleted={deleted}, errors={del_err}")
             else:
                 print(
-                    "Dry-run mode: no deletes performed. Run with DRY_RUN=False to delete source objects.")
+                    "Dry-run mode: no deletes performed. Run with DRY_RUN=False to delete source objects."
+                )
     elif not is_s3_path(src) and not is_s3_path(dst):
         # Local filesystem move
         moved, err = local_move(src, dst, dry_run=dry)
         print(f"Local move listed/moved: {moved}, errors: {err}")
     else:
-        print("Source and destination must both be S3 paths or both local paths. Aborting.")
+        print(
+            "Source and destination must both be S3 paths or both local paths. Aborting."
+        )
         sys.exit(2)
 
 

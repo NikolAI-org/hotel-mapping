@@ -3,6 +3,7 @@ from pyspark.sql.types import StructType, ArrayType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
+
 class GenericFlattener:
     """
     Generic flattener for PySpark DataFrames:
@@ -17,7 +18,9 @@ class GenericFlattener:
         """
         self.explode_arrays = explode_arrays
 
-    def flatten(self, df: DataFrame, prefix: str = "", is_recursive: bool = False) -> DataFrame:
+    def flatten(
+        self, df: DataFrame, prefix: str = "", is_recursive: bool = False
+    ) -> DataFrame:
         """
         Recursively flatten a DataFrame, retaining the original JSON.
         :param df: input DataFrame
@@ -40,11 +43,15 @@ class GenericFlattener:
             if isinstance(dtype, StructType):
                 nested_cols_to_flatten.append((field_name, field.name, dtype))
 
-            elif isinstance(dtype, ArrayType) and isinstance(dtype.elementType, StructType):
+            elif isinstance(dtype, ArrayType) and isinstance(
+                dtype.elementType, StructType
+            ):
                 if self.explode_arrays:
                     exploded_col = F.explode_outer(F.col(field.name)).alias(field_name)
                     df = df.withColumn(field_name, exploded_col)
-                    nested_cols_to_flatten.append((field_name, field_name, dtype.elementType))
+                    nested_cols_to_flatten.append(
+                        (field_name, field_name, dtype.elementType)
+                    )
                 else:
                     flat_cols.append(F.col(field.name).alias(field_name))
 
@@ -52,9 +59,14 @@ class GenericFlattener:
                 flat_cols.append(F.col(field.name).alias(field_name))
 
         # ✅ Include _original_message only once in selection
-        select_cols = [*flat_cols, *[F.col(name) for _, name, _ in nested_cols_to_flatten]]
+        select_cols = [
+            *flat_cols,
+            *[F.col(name) for _, name, _ in nested_cols_to_flatten],
+        ]
         if "_original_message" in df.columns and not any(
-            c._jc.toString().endswith("_original_message") for c in select_cols if hasattr(c, "_jc")
+            c._jc.toString().endswith("_original_message")
+            for c in select_cols
+            if hasattr(c, "_jc")
         ):
             select_cols.append(F.col("_original_message"))
 
@@ -77,11 +89,13 @@ class GenericFlattener:
             df = df.drop(col_name)
 
         # Continue until no structs remain
-        remaining_nested = [f for f in df.schema.fields if isinstance(f.dataType, StructType)]
+        remaining_nested = [
+            f for f in df.schema.fields if isinstance(f.dataType, StructType)
+        ]
         if remaining_nested:
             return self.flatten(df, prefix="", is_recursive=True)
 
         # ✅ Rename only once at the end
         df = df.withColumnRenamed("_original_message", "original_message")
-        
+
         return df

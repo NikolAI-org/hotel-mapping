@@ -9,32 +9,45 @@ Output: s3a://test-data-lake/mapped_input/{country}/{supplier_name}/
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, explode, current_timestamp, lit,
-    concat_ws, array_join, to_timestamp
+    col,
+    explode,
+    current_timestamp,
+    lit,
+    concat_ws,
+    array_join,
+    to_timestamp,
 )
 from pyspark.sql.types import (
-    StructType, StructField, StringType, DoubleType,
-    IntegerType, ArrayType, BooleanType
+    StructType,
+    StructField,
+    StringType,
+    DoubleType,
+    IntegerType,
+    ArrayType,
+    BooleanType,
 )
 import os
 
 # Get parameters from environment variables (set by DAG)
-country = os.getenv('COUNTRY', 'india')
-supplier_name = os.getenv('SUPPLIER_NAME', 'hobse')
+country = os.getenv("COUNTRY", "india")
+supplier_name = os.getenv("SUPPLIER_NAME", "hobse")
 
 # Create Spark session with S3A configuration for MinIO
-builder = SparkSession.builder \
-    .appName(f"[TEST] Map JSON to Parquet - {country}/{supplier_name}") \
-    .master("spark://spark-master:7077") \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-    .config("spark.hadoop.fs.s3a.access.key", "minioadmin") \
-    .config("spark.hadoop.fs.s3a.secret.key", "minioadmin") \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
-    .config("spark.executor.memory", "1g") \
-    .config("spark.executor.cores", "1") \
+builder = (
+    SparkSession.builder.appName(
+        f"[TEST] Map JSON to Parquet - {country}/{supplier_name}"
+    )
+    .master("spark://spark-master:7077")
+    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
+    .config("spark.hadoop.fs.s3a.access.key", "minioadmin")
+    .config("spark.hadoop.fs.s3a.secret.key", "minioadmin")
+    .config("spark.hadoop.fs.s3a.path.style.access", "true")
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+    .config("spark.executor.memory", "1g")
+    .config("spark.executor.cores", "1")
     .config("spark.driver.memory", "1g")
+)
 
 spark = builder.getOrCreate()
 
@@ -43,7 +56,8 @@ spark.sparkContext.setLogLevel("WARN")
 
 print("=" * 80)
 print(
-    f"[TEST] Starting JSON to Parquet Mapping - {country.upper()} / {supplier_name.upper()}")
+    f"[TEST] Starting JSON to Parquet Mapping - {country.upper()} / {supplier_name.upper()}"
+)
 print("=" * 80)
 
 # Define paths (using test bucket)
@@ -58,71 +72,91 @@ try:
     print("\n1. Defining JSON schema...")
 
     # Address schema
-    address_schema = StructType([
-        StructField("line1", StringType(), True),
-        StructField("line2", StringType(), True),
-        StructField("city", StructType([
-            StructField("name", StringType(), True)
-        ]), True),
-        StructField("state", StructType([
-            StructField("name", StringType(), True),
-            StructField("code", StringType(), True)
-        ]), True),
-        StructField("country", StructType([
-            StructField("code", StringType(), True),
-            StructField("name", StringType(), True)
-        ]), True),
-        StructField("postalCode", StringType(), True)
-    ])
+    address_schema = StructType(
+        [
+            StructField("line1", StringType(), True),
+            StructField("line2", StringType(), True),
+            StructField(
+                "city", StructType([StructField("name", StringType(), True)]), True
+            ),
+            StructField(
+                "state",
+                StructType(
+                    [
+                        StructField("name", StringType(), True),
+                        StructField("code", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            StructField(
+                "country",
+                StructType(
+                    [
+                        StructField("code", StringType(), True),
+                        StructField("name", StringType(), True),
+                    ]
+                ),
+                True,
+            ),
+            StructField("postalCode", StringType(), True),
+        ]
+    )
 
     # Contact schema
-    contact_schema = StructType([
-        StructField("address", address_schema, True),
-        StructField("phones", ArrayType(StringType()), True),
-        StructField("fax", ArrayType(StringType()), True),
-        StructField("emails", ArrayType(StringType()), True)
-    ])
+    contact_schema = StructType(
+        [
+            StructField("address", address_schema, True),
+            StructField("phones", ArrayType(StringType()), True),
+            StructField("fax", ArrayType(StringType()), True),
+            StructField("emails", ArrayType(StringType()), True),
+        ]
+    )
 
     # GeoCode schema
-    geoCode_schema = StructType([
-        StructField("lat", StringType(), True),
-        StructField("long", StringType(), True)
-    ])
+    geoCode_schema = StructType(
+        [
+            StructField("lat", StringType(), True),
+            StructField("long", StringType(), True),
+        ]
+    )
 
     # Hotel schema
-    hotel_schema = StructType([
-        StructField("id", StringType(), True),
-        StructField("name", StringType(), True),
-        StructField("relevanceScore", StringType(), True),
-        StructField("providerId", StringType(), True),
-        StructField("providerHotelId", StringType(), True),
-        StructField("providerName", StringType(), True),
-        StructField("language", StringType(), True),
-        StructField("geoCode", geoCode_schema, True),
-        StructField("contact", contact_schema, True),
-        StructField("type", StringType(), True),
-        StructField("category", StringType(), True),
-        StructField("starRating", StringType(), True),
-        StructField("distance", StringType(), True),
-        StructField("attributes", ArrayType(StringType()), True),
-        StructField("imageCount", StringType(), True),
-        StructField("availableSuppliers", ArrayType(StringType()), True),
-        StructField("website", StringType(), True)
-    ])
+    hotel_schema = StructType(
+        [
+            StructField("id", StringType(), True),
+            StructField("name", StringType(), True),
+            StructField("relevanceScore", StringType(), True),
+            StructField("providerId", StringType(), True),
+            StructField("providerHotelId", StringType(), True),
+            StructField("providerName", StringType(), True),
+            StructField("language", StringType(), True),
+            StructField("geoCode", geoCode_schema, True),
+            StructField("contact", contact_schema, True),
+            StructField("type", StringType(), True),
+            StructField("category", StringType(), True),
+            StructField("starRating", StringType(), True),
+            StructField("distance", StringType(), True),
+            StructField("attributes", ArrayType(StringType()), True),
+            StructField("imageCount", StringType(), True),
+            StructField("availableSuppliers", ArrayType(StringType()), True),
+            StructField("website", StringType(), True),
+        ]
+    )
 
     # Root schema
-    root_schema = StructType([
-        StructField("hotels", ArrayType(hotel_schema), True),
-        StructField("curatedHotels", ArrayType(hotel_schema), True)
-    ])
+    root_schema = StructType(
+        [
+            StructField("hotels", ArrayType(hotel_schema), True),
+            StructField("curatedHotels", ArrayType(hotel_schema), True),
+        ]
+    )
 
     print("   ✓ Schema defined successfully")
 
     # Read JSON files
     print(f"\n2. Reading JSON files from: {raw_input_path}")
-    df_raw = spark.read \
-        .schema(root_schema) \
-        .json(raw_input_path)
+    df_raw = spark.read.schema(root_schema).json(raw_input_path)
 
     print(f"   Files read successfully")
 
@@ -137,16 +171,13 @@ try:
         col("hotel.id").alias("hotel_id"),
         col("hotel.name").alias("hotel_name"),
         col("hotel.relevanceScore").alias("relevance_score"),
-
         # Provider information
         col("hotel.providerId").alias("provider_id"),
         col("hotel.providerHotelId").alias("provider_hotel_id"),
         col("hotel.providerName").alias("provider_name"),
-
         # Geo location
         col("hotel.geoCode.lat").cast(DoubleType()).alias("latitude"),
         col("hotel.geoCode.long").cast(DoubleType()).alias("longitude"),
-
         # Address information
         col("hotel.contact.address.line1").alias("address_line1"),
         col("hotel.contact.address.line2").alias("address_line2"),
@@ -156,12 +187,10 @@ try:
         col("hotel.contact.address.country.code").alias("country_code"),
         col("hotel.contact.address.country.name").alias("country_name"),
         col("hotel.contact.address.postalCode").alias("postal_code"),
-
         # Contact information (arrays to comma-separated strings)
         array_join(col("hotel.contact.phones"), ", ").alias("phone_numbers"),
         array_join(col("hotel.contact.fax"), ", ").alias("fax_numbers"),
         array_join(col("hotel.contact.emails"), ", ").alias("email_addresses"),
-
         # Hotel attributes
         col("hotel.type").alias("hotel_type"),
         col("hotel.category").alias("hotel_category"),
@@ -169,16 +198,14 @@ try:
         col("hotel.distance").cast(DoubleType()).alias("distance"),
         col("hotel.imageCount").cast(IntegerType()).alias("image_count"),
         col("hotel.website").alias("website"),
-
         # Attributes and suppliers (keep as arrays)
         col("hotel.attributes").alias("attributes"),
         col("hotel.availableSuppliers").alias("available_suppliers"),
-
         # Metadata
         col("hotel.language").alias("language"),
         lit(country).alias("source_country"),
         lit(supplier_name).alias("source_supplier"),
-        current_timestamp().alias("processed_timestamp")
+        current_timestamp().alias("processed_timestamp"),
     )
 
     record_count = df_mapped.count()
@@ -190,16 +217,21 @@ try:
 
     print("\n6. Sample mapped data:")
     df_mapped.select(
-        "hotel_id", "hotel_name", "city", "state",
-        "country_code", "star_rating", "latitude", "longitude"
+        "hotel_id",
+        "hotel_name",
+        "city",
+        "state",
+        "country_code",
+        "star_rating",
+        "latitude",
+        "longitude",
     ).show(5, truncate=False)
 
     # Write to Parquet format
     print(f"\n7. Writing to Parquet: {mapped_output_path}")
-    df_mapped.write \
-        .mode("overwrite") \
-        .partitionBy("source_country", "source_supplier") \
-        .parquet(mapped_output_path)
+    df_mapped.write.mode("overwrite").partitionBy(
+        "source_country", "source_supplier"
+    ).parquet(mapped_output_path)
 
     print("   ✓ Data successfully written to Parquet")
 
@@ -237,6 +269,7 @@ except Exception as e:
     print("=" * 80)
     print(f"Error details: {str(e)}")
     import traceback
+
     traceback.print_exc()
     raise
 

@@ -1,5 +1,6 @@
 import math
 
+
 def haversine(lat1, lon1, lat2, lon2):
     if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
         return None

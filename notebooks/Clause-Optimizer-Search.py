@@ -38,7 +38,7 @@ import pandas as pd
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 
-CSV_PATH = '/Users/nakul.patil/Downloads/hotels.csv'
+CSV_PATH = "/Users/nakul.patil/Downloads/hotels.csv"
 
 # Paste your starting WHERE clause here (SQL-style AND / OR, >= / <=)
 WHERE_CLAUSE = """
@@ -87,10 +87,10 @@ FINE_STEP = 0.01
 def _tokenize(expr: str) -> list:
     """Tokenize a SQL WHERE clause into a flat list of tokens."""
     # Normalize whitespace
-    expr = ' '.join(expr.split())
+    expr = " ".join(expr.split())
     # Insert spaces around parens
-    expr = re.sub(r'\(', ' ( ', expr)
-    expr = re.sub(r'\)', ' ) ', expr)
+    expr = re.sub(r"\(", " ( ", expr)
+    expr = re.sub(r"\)", " ) ", expr)
     tokens = expr.split()
     return tokens
 
@@ -109,32 +109,32 @@ def _parse_expr(tokens: list, pos: int):
 def _parse_or(tokens, pos):
     left, pos = _parse_and(tokens, pos)
     children = [left]
-    while pos < len(tokens) and tokens[pos].upper() == 'OR':
+    while pos < len(tokens) and tokens[pos].upper() == "OR":
         pos += 1
         right, pos = _parse_and(tokens, pos)
         children.append(right)
     if len(children) == 1:
         return children[0], pos
-    return ('OR', children), pos
+    return ("OR", children), pos
 
 
 def _parse_and(tokens, pos):
     left, pos = _parse_atom(tokens, pos)
     children = [left]
-    while pos < len(tokens) and tokens[pos].upper() == 'AND':
+    while pos < len(tokens) and tokens[pos].upper() == "AND":
         pos += 1
         right, pos = _parse_atom(tokens, pos)
         children.append(right)
     if len(children) == 1:
         return children[0], pos
-    return ('AND', children), pos
+    return ("AND", children), pos
 
 
 def _parse_atom(tokens, pos):
-    if tokens[pos] == '(':
+    if tokens[pos] == "(":
         pos += 1  # consume '('
         node, pos = _parse_or(tokens, pos)
-        if pos < len(tokens) and tokens[pos] == ')':
+        if pos < len(tokens) and tokens[pos] == ")":
             pos += 1  # consume ')'
         return node, pos
     # Should be  feature OP value
@@ -144,7 +144,7 @@ def _parse_atom(tokens, pos):
     pos += 1
     value = float(tokens[pos])
     pos += 1
-    return ('COND', feature, op, value), pos
+    return ("COND", feature, op, value), pos
 
 
 def parse_where_clause(clause: str):
@@ -164,18 +164,19 @@ def parse_where_clause(clause: str):
 # The outer structure is always:  UNION of branches  (OR of AND-clauses).
 # If the top-level is a single AND (no top-level OR), we wrap it.
 
+
 def ast_to_branches(node):
     """Convert AST to list-of-lists: [[cond, ...], ...]  (outer OR, inner AND)."""
-    if node[0] == 'COND':
-        return [[{'feature': node[1], 'op': node[2], 'threshold': node[3]}]]
+    if node[0] == "COND":
+        return [[{"feature": node[1], "op": node[2], "threshold": node[3]}]]
 
-    if node[0] == 'AND':
+    if node[0] == "AND":
         # Flatten AND children: cross-product of sub-branches
         # For top-level AND this means a single branch with all conditions
         # We collect leaf CONDs; nested ORs we expand
         return _and_to_branches(node[1])
 
-    if node[0] == 'OR':
+    if node[0] == "OR":
         branches = []
         for child in node[1]:
             branches.extend(ast_to_branches(child))
@@ -208,15 +209,15 @@ def _and_to_branches(children):
 
 def branches_to_str(branches, indent=4) -> str:
     """Format branches back into a readable WHERE clause string."""
-    pad = ' ' * indent
+    pad = " " * indent
     or_parts = []
     for branch in branches:
         and_parts = []
         for cond in branch:
-            and_parts.append(
-                f"{cond['feature']} {cond['op']} {cond['threshold']:.4f}")
+            and_parts.append(f"{cond['feature']} {cond['op']} {cond['threshold']:.4f}")
         or_parts.append(
-            f"\n{pad}  (" + f"\n{pad}    AND ".join(and_parts) + f"\n{pad}  )")
+            f"\n{pad}  (" + f"\n{pad}    AND ".join(and_parts) + f"\n{pad}  )"
+        )
     where = f"\n{pad}OR".join(or_parts)
     return where
 
@@ -225,20 +226,21 @@ def branches_to_str(branches, indent=4) -> str:
 # MASK EVALUATION
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def branches_to_mask(branches, col, N):
     """Evaluate branches (list-of-list-of-cond) → boolean numpy mask."""
     combined = np.zeros(N, dtype=bool)
     for branch in branches:
         mask = np.ones(N, dtype=bool)
         for cond in branch:
-            feat = cond['feature']
-            op = cond['op']
-            t = cond['threshold']
+            feat = cond["feature"]
+            op = cond["op"]
+            t = cond["threshold"]
             if feat not in col:
                 continue
-            if op in ('>=', '>'):
+            if op in (">=", ">"):
                 mask &= col[feat] >= t
-            elif op in ('<=', '<'):
+            elif op in ("<=", "<"):
                 mask &= col[feat] <= t
         combined |= mask
     return combined
@@ -268,8 +270,8 @@ def score(y_true, branches, col, N, total_pos, min_precision=0.0):
 # MAIN OPTIMIZER
 # ─────────────────────────────────────────────────────────────────────────────
 
-def optimize_where_clause(csv_path: str, where_clause: str,
-                          min_precision: float = 0.0):
+
+def optimize_where_clause(csv_path: str, where_clause: str, min_precision: float = 0.0):
     t0 = time.time()
 
     print("=" * 90)
@@ -286,16 +288,25 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         sys.exit(1)
 
     N = len(df)
-    y_true = (df['id_i'] == df['id_j']).values.astype(bool)
+    y_true = (df["id_i"] == df["id_j"]).values.astype(bool)
     total_pos = int(y_true.sum())
     total_neg = N - total_pos
 
-    print(
-        f"\nRows: {N:,} | Positives: {total_pos:,} | Negatives: {total_neg:,}")
+    print(f"\nRows: {N:,} | Positives: {total_pos:,} | Negatives: {total_neg:,}")
 
     # ── Auto-detect feature columns ────────────────────────────────────────
-    exclude = {'id_i', 'id_j', 'name_i', 'name_j', 'hotel_id_i', 'hotel_id_j',
-               'index', 'same_hotel', 'uid_i', 'uid_j'}
+    exclude = {
+        "id_i",
+        "id_j",
+        "name_i",
+        "name_j",
+        "hotel_id_i",
+        "hotel_id_j",
+        "index",
+        "same_hotel",
+        "uid_i",
+        "uid_j",
+    }
     all_features = []
     for c in df.columns:
         if c in exclude:
@@ -319,22 +330,24 @@ def optimize_where_clause(csv_path: str, where_clause: str,
 
     # Sanitize: keep only conditions with known features
     branches = [
-        [c for c in branch if c['feature'] in col]
+        [c for c in branch if c["feature"] in col]
         for branch in branches
-        if any(c['feature'] in col for c in branch)
+        if any(c["feature"] in col for c in branch)
     ]
 
     print(f"  → {len(branches)} OR-branches parsed")
     for i, branch in enumerate(branches):
-        conds = ", ".join(f"{c['feature']} {c['op']} {c['threshold']}"
-                          for c in branch)
-        print(f"    Branch {i+1}: {conds}")
+        conds = ", ".join(f"{c['feature']} {c['op']} {c['threshold']}" for c in branch)
+        print(f"    Branch {i + 1}: {conds}")
 
     # Baseline evaluation
     f1_init, p_init, r_init, tp_init, fp_init, fn_init = score(
-        y_true, branches, col, N, total_pos, min_precision)
-    print(f"\nBaseline: P={p_init:.4f}  R={r_init:.4f}  F1={f1_init:.4f}"
-          f"  TP={tp_init}  FP={fp_init}  FN={fn_init}")
+        y_true, branches, col, N, total_pos, min_precision
+    )
+    print(
+        f"\nBaseline: P={p_init:.4f}  R={r_init:.4f}  F1={f1_init:.4f}"
+        f"  TP={tp_init}  FP={fp_init}  FN={fn_init}"
+    )
 
     best_branches = deepcopy(branches)
     best_f1 = f1_init
@@ -345,41 +358,44 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         arr = col[f]
         if y_true.any():
             tp_max = float(arr[y_true].max())
-            irr_mask &= (arr >= tp_max)
+            irr_mask &= arr >= tp_max
     IRR_FP = int(irr_mask.sum())
     if IRR_FP > 0:
         max_p = total_pos / (total_pos + IRR_FP)
-        print(f"\nNote: {IRR_FP} irreducible FPs detected → max achievable "
-              f"precision = {max_p:.4f}")
+        print(
+            f"\nNote: {IRR_FP} irreducible FPs detected → max achievable "
+            f"precision = {max_p:.4f}"
+        )
 
     # ── Pre-compute threshold grids ────────────────────────────────────────
-    coarse_t = np.round(np.arange(COARSE_STEP, 1.0 +
-                        COARSE_STEP / 2, COARSE_STEP), 4)
-    fine_t = np.round(np.arange(FINE_STEP,   1.0 +
-                      FINE_STEP / 2,   FINE_STEP),   4)
+    coarse_t = np.round(np.arange(COARSE_STEP, 1.0 + COARSE_STEP / 2, COARSE_STEP), 4)
+    fine_t = np.round(np.arange(FINE_STEP, 1.0 + FINE_STEP / 2, FINE_STEP), 4)
 
     def _sweep_threshold(branches, bi, ci, grid, window):
         """Sweep threshold for condition ci in branch bi. Returns best_f1, best_t."""
-        orig_t = branches[bi][ci]['threshold']
+        orig_t = branches[bi][ci]["threshold"]
         best_t = orig_t
         bf = score(y_true, branches, col, N, total_pos, min_precision)[0]
         for t in grid:
             if abs(t - orig_t) > window:
                 continue
-            branches[bi][ci]['threshold'] = float(t)
+            branches[bi][ci]["threshold"] = float(t)
             f = score(y_true, branches, col, N, total_pos, min_precision)[0]
             if f > bf:
                 bf = f
                 best_t = float(t)
-        branches[bi][ci]['threshold'] = best_t
+        branches[bi][ci]["threshold"] = best_t
         return bf, best_t
 
     # ══════════════════════════════════════════════════════════════════════
     # PHASE 1: THRESHOLD TUNING (coarse)
     # ══════════════════════════════════════════════════════════════════════
     print("\n" + "=" * 90)
-    print("PHASE 1: Threshold tuning (coarse, ±{:.2f}, step={})".format(
-        TUNE_WINDOW, COARSE_STEP))
+    print(
+        "PHASE 1: Threshold tuning (coarse, ±{:.2f}, step={})".format(
+            TUNE_WINDOW, COARSE_STEP
+        )
+    )
     print("=" * 90)
 
     improved = True
@@ -389,22 +405,33 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         passes += 1
         for bi in range(len(best_branches)):
             for ci in range(len(best_branches[bi])):
-                prev_t = best_branches[bi][ci]['threshold']
+                prev_t = best_branches[bi][ci]["threshold"]
                 new_f1, new_t = _sweep_threshold(
-                    best_branches, bi, ci, coarse_t, TUNE_WINDOW)
+                    best_branches, bi, ci, coarse_t, TUNE_WINDOW
+                )
                 if new_t != prev_t:
                     improved = True
                     if new_f1 > best_f1:
                         best_f1 = new_f1
 
     f1_p1, p_p1, r_p1, tp_p1, fp_p1, fn_p1 = score(
-        y_true, best_branches, col, N, total_pos, min_precision)
+        y_true, best_branches, col, N, total_pos, min_precision
+    )
     if f1_p1 > f1_init:
-        print(f"  Improved: P={p_p1:.4f}  R={r_p1:.4f}  F1={f1_p1:.4f}"
-              f"  TP={tp_p1}  FP={fp_p1}")
+        print(
+            f"  Improved: P={p_p1:.4f}  R={r_p1:.4f}  F1={f1_p1:.4f}"
+            f"  TP={tp_p1}  FP={fp_p1}"
+        )
     else:
         print(f"  No improvement from threshold tuning.")
-        f1_p1, p_p1, r_p1, tp_p1, fp_p1, fn_p1 = f1_init, p_init, r_init, tp_init, fp_init, fn_init
+        f1_p1, p_p1, r_p1, tp_p1, fp_p1, fn_p1 = (
+            f1_init,
+            p_init,
+            r_init,
+            tp_init,
+            fp_init,
+            fn_init,
+        )
 
     # ══════════════════════════════════════════════════════════════════════
     # PHASE 2: CONDITION PRUNING
@@ -425,13 +452,16 @@ def optimize_where_clause(csv_path: str, where_clause: str,
                 trial = deepcopy(best_branches)
                 trial[bi] = [c for j, c in enumerate(trial[bi]) if j != ci]
                 f, p, r, tp, fp, fn = score(
-                    y_true, trial, col, N, total_pos, min_precision)
+                    y_true, trial, col, N, total_pos, min_precision
+                )
                 if f >= best_f1:
                     removed_cond = best_branches[bi][ci]
-                    print(f"  Branch {bi+1}: removed condition "
-                          f"'{removed_cond['feature']} {removed_cond['op']} "
-                          f"{removed_cond['threshold']:.4f}' "
-                          f"(F1={f:.4f} >= {best_f1:.4f})")
+                    print(
+                        f"  Branch {bi + 1}: removed condition "
+                        f"'{removed_cond['feature']} {removed_cond['op']} "
+                        f"{removed_cond['threshold']:.4f}' "
+                        f"(F1={f:.4f} >= {best_f1:.4f})"
+                    )
                     best_branches = trial
                     best_f1 = f
                     pruned = True
@@ -454,7 +484,7 @@ def optimize_where_clause(csv_path: str, where_clause: str,
     print("=" * 90)
 
     for bi in range(len(best_branches)):
-        existing_feats = {c['feature'] for c in best_branches[bi]}
+        existing_feats = {c["feature"] for c in best_branches[bi]}
         added = 0
 
         for feat in all_features:
@@ -464,34 +494,40 @@ def optimize_where_clause(csv_path: str, where_clause: str,
                 break
 
             # Determine operator: if feature contains 'distance' → <=, else >=
-            op = '<=' if 'distance' in feat.lower() else '>='
+            op = "<=" if "distance" in feat.lower() else ">="
             arr = col[feat]
 
             for t in coarse_t:
-                if op == '<=':
-                    t_use = float(
-                        round(arr.max() * t + arr.min() * (1 - t), 4))
+                if op == "<=":
+                    t_use = float(round(arr.max() * t + arr.min() * (1 - t), 4))
                 else:
                     t_use = float(t)
 
                 trial = deepcopy(best_branches)
-                trial[bi] = trial[bi] + \
-                    [{'feature': feat, 'op': op, 'threshold': t_use}]
+                trial[bi] = trial[bi] + [
+                    {"feature": feat, "op": op, "threshold": t_use}
+                ]
                 f, p, r, tp, fp, fn = score(
-                    y_true, trial, col, N, total_pos, min_precision)
+                    y_true, trial, col, N, total_pos, min_precision
+                )
                 if f > best_f1:
                     best_branches = trial
                     best_f1 = f
                     existing_feats.add(feat)
                     added += 1
-                    print(f"  Branch {bi+1}: added '{feat} {op} {t_use:.4f}' "
-                          f"(F1 {score(y_true, best_branches, col, N, total_pos, min_precision)[0]:.4f})")
+                    print(
+                        f"  Branch {bi + 1}: added '{feat} {op} {t_use:.4f}' "
+                        f"(F1 {score(y_true, best_branches, col, N, total_pos, min_precision)[0]:.4f})"
+                    )
                     break
 
     f1_p3, p_p3, r_p3, tp_p3, fp_p3, fn_p3 = score(
-        y_true, best_branches, col, N, total_pos, min_precision)
-    print(f"\n  After phase 3: P={p_p3:.4f}  R={r_p3:.4f}  F1={f1_p3:.4f}"
-          f"  TP={tp_p3}  FP={fp_p3}")
+        y_true, best_branches, col, N, total_pos, min_precision
+    )
+    print(
+        f"\n  After phase 3: P={p_p3:.4f}  R={r_p3:.4f}  F1={f1_p3:.4f}"
+        f"  TP={tp_p3}  FP={fp_p3}"
+    )
 
     # ══════════════════════════════════════════════════════════════════════
     # PHASE 4: BRANCH ADDITION (new OR-branches for uncaptured positives)
@@ -506,7 +542,8 @@ def optimize_where_clause(csv_path: str, where_clause: str,
     print(f"  Uncaptured positives: {unc_count}")
 
     _, _, _, _, cur_fp, _ = score(
-        y_true, best_branches, col, N, total_pos, min_precision)
+        y_true, best_branches, col, N, total_pos, min_precision
+    )
     fp_budget = max(IRR_FP, cur_fp)
 
     branches_added = 0
@@ -523,9 +560,9 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         # Single-feature new branches
         for feat in all_features:
             arr = col[feat]
-            op = '<=' if 'distance' in feat.lower() else '>='
+            op = "<=" if "distance" in feat.lower() else ">="
             for t in coarse_t:
-                if op == '>=':
+                if op == ">=":
                     cand_mask = arr >= t
                 else:
                     cand_mask = arr <= (arr.max() * t)
@@ -536,19 +573,29 @@ def optimize_where_clause(csv_path: str, where_clause: str,
                 new_tp = int(np.sum(uncaptured & cand_mask))
                 if new_tp > best_gain:
                     best_gain = new_tp
-                    best_new_branch = [{'feature': feat, 'op': op,
-                                        'threshold': float(t) if op == '>=' else float(arr.max() * t)}]
+                    best_new_branch = [
+                        {
+                            "feature": feat,
+                            "op": op,
+                            "threshold": float(t)
+                            if op == ">="
+                            else float(arr.max() * t),
+                        }
+                    ]
 
         # Two-feature new branches (pairs of high-value features)
-        high_val_feats = [f for f in all_features
-                          if col[f][y_true].mean() > 0.5] if y_true.any() else []
+        high_val_feats = (
+            [f for f in all_features if col[f][y_true].mean() > 0.5]
+            if y_true.any()
+            else []
+        )
         for f1, f2 in combinations(high_val_feats[:12], 2):
-            op1 = '<=' if 'distance' in f1.lower() else '>='
-            op2 = '<=' if 'distance' in f2.lower() else '>='
+            op1 = "<=" if "distance" in f1.lower() else ">="
+            op2 = "<=" if "distance" in f2.lower() else ">="
             for t1 in coarse_t[::2]:  # subsample for speed
-                m1 = col[f1] >= t1 if op1 == '>=' else col[f1] <= col[f1].max() * t1
+                m1 = col[f1] >= t1 if op1 == ">=" else col[f1] <= col[f1].max() * t1
                 for t2 in coarse_t[::2]:
-                    m2 = col[f2] >= t2 if op2 == '>=' else col[f2] <= col[f2].max() * t2
+                    m2 = col[f2] >= t2 if op2 == ">=" else col[f2] <= col[f2].max() * t2
                     cand_mask = m1 & m2
                     trial = current_mask | cand_mask
                     trial_fp = int(np.sum(trial & ~y_true))
@@ -558,10 +605,20 @@ def optimize_where_clause(csv_path: str, where_clause: str,
                     if new_tp > best_gain:
                         best_gain = new_tp
                         best_new_branch = [
-                            {'feature': f1, 'op': op1, 'threshold': float(
-                                t1) if op1 == '>=' else float(col[f1].max() * t1)},
-                            {'feature': f2, 'op': op2, 'threshold': float(
-                                t2) if op2 == '>=' else float(col[f2].max() * t2)},
+                            {
+                                "feature": f1,
+                                "op": op1,
+                                "threshold": float(t1)
+                                if op1 == ">="
+                                else float(col[f1].max() * t1),
+                            },
+                            {
+                                "feature": f2,
+                                "op": op2,
+                                "threshold": float(t2)
+                                if op2 == ">="
+                                else float(col[f2].max() * t2),
+                            },
                         ]
 
         if best_new_branch is None or best_gain == 0:
@@ -570,7 +627,8 @@ def optimize_where_clause(csv_path: str, where_clause: str,
 
         trial_branches = best_branches + [best_new_branch]
         f_trial, p_trial, r_trial, tp_trial, fp_trial, fn_trial = score(
-            y_true, trial_branches, col, N, total_pos, min_precision)
+            y_true, trial_branches, col, N, total_pos, min_precision
+        )
 
         if f_trial >= best_f1:
             best_branches = trial_branches
@@ -579,13 +637,18 @@ def optimize_where_clause(csv_path: str, where_clause: str,
             branches_added += 1
             conds_str = " AND ".join(
                 f"{c['feature']} {c['op']} {c['threshold']:.4f}"
-                for c in best_new_branch)
-            print(f"  Step {step+1}: added branch ({conds_str})  "
-                  f"+{best_gain}TP → P={p_trial:.4f}  R={r_trial:.4f}  "
-                  f"F1={f_trial:.4f}")
+                for c in best_new_branch
+            )
+            print(
+                f"  Step {step + 1}: added branch ({conds_str})  "
+                f"+{best_gain}TP → P={p_trial:.4f}  R={r_trial:.4f}  "
+                f"F1={f_trial:.4f}"
+            )
         else:
-            print(f"  Step {step+1}: best candidate +{best_gain}TP but "
-                  f"F1 would drop ({best_f1:.4f}→{f_trial:.4f}), stopping.")
+            print(
+                f"  Step {step + 1}: best candidate +{best_gain}TP but "
+                f"F1 would drop ({best_f1:.4f}→{f_trial:.4f}), stopping."
+            )
             break
 
     if branches_added == 0:
@@ -604,13 +667,13 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         pruned_branches = False
         for bi in range(len(best_branches) - 1, -1, -1):
             trial = [b for j, b in enumerate(best_branches) if j != bi]
-            f, p, r, tp, fp, fn = score(
-                y_true, trial, col, N, total_pos, min_precision)
+            f, p, r, tp, fp, fn = score(y_true, trial, col, N, total_pos, min_precision)
             if f >= best_f1:
                 conds_str = " AND ".join(
                     f"{c['feature']} {c['op']} {c['threshold']:.4f}"
-                    for c in best_branches[bi])
-                print(f"  Removed redundant branch {bi+1}: ({conds_str})")
+                    for c in best_branches[bi]
+                )
+                print(f"  Removed redundant branch {bi + 1}: ({conds_str})")
                 best_branches = trial
                 best_f1 = f
                 pruned_branches = True
@@ -624,8 +687,7 @@ def optimize_where_clause(csv_path: str, where_clause: str,
     # PHASE 6: FINAL FINE-TUNE (fine step, narrow window)
     # ══════════════════════════════════════════════════════════════════════
     print("\n" + "=" * 90)
-    print("PHASE 6: Final fine-tune (step={}, ±{})".format(
-        FINE_STEP, FINE_WINDOW))
+    print("PHASE 6: Final fine-tune (step={}, ±{})".format(FINE_STEP, FINE_WINDOW))
     print("=" * 90)
 
     improved = True
@@ -635,16 +697,18 @@ def optimize_where_clause(csv_path: str, where_clause: str,
         passes += 1
         for bi in range(len(best_branches)):
             for ci in range(len(best_branches[bi])):
-                prev_t = best_branches[bi][ci]['threshold']
+                prev_t = best_branches[bi][ci]["threshold"]
                 new_f1, new_t = _sweep_threshold(
-                    best_branches, bi, ci, fine_t, FINE_WINDOW)
+                    best_branches, bi, ci, fine_t, FINE_WINDOW
+                )
                 if new_t != prev_t:
                     improved = True
                     if new_f1 > best_f1:
                         best_f1 = new_f1
 
     f1_final, p_final, r_final, tp_final, fp_final, fn_final = score(
-        y_true, best_branches, col, N, total_pos, min_precision)
+        y_true, best_branches, col, N, total_pos, min_precision
+    )
 
     # ══════════════════════════════════════════════════════════════════════
     # REPORT
@@ -655,7 +719,7 @@ def optimize_where_clause(csv_path: str, where_clause: str,
     print(sep)
 
     print(f"\n  {'Metric':<12} {'Before':>10} {'After':>10}")
-    print(f"  {'-'*34}")
+    print(f"  {'-' * 34}")
     print(f"  {'Precision':<12} {p_init:>10.4f} {p_final:>10.4f}")
     print(f"  {'Recall':<12} {r_init:>10.4f} {r_final:>10.4f}")
     print(f"  {'F1-Score':<12} {f1_init:>10.4f} {f1_final:>10.4f}")
@@ -670,8 +734,7 @@ def optimize_where_clause(csv_path: str, where_clause: str,
 
     or_strs = []
     for branch in best_branches:
-        cond_strs = [f"{c['feature']} {c['op']} {c['threshold']:.4f}"
-                     for c in branch]
+        cond_strs = [f"{c['feature']} {c['op']} {c['threshold']:.4f}" for c in branch]
         if len(cond_strs) == 1:
             or_strs.append(cond_strs[0])
         else:
@@ -688,8 +751,9 @@ def optimize_where_clause(csv_path: str, where_clause: str,
     print()
     print('WHERE_CLAUSE = """')
     for i, branch in enumerate(best_branches):
-        cond_strs = [f"    {c['feature']} {c['op']} {c['threshold']:.4f}"
-                     for c in branch]
+        cond_strs = [
+            f"    {c['feature']} {c['op']} {c['threshold']:.4f}" for c in branch
+        ]
         prefix = "    (" if i == 0 else "    OR ("
         print(prefix)
         print("\n        AND ".join(cond_strs))

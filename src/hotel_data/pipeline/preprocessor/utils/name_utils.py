@@ -1,6 +1,10 @@
 import re
 from fuzzywuzzy import fuzz
-from hotel_data.pipeline.preprocessor.utils.constants import STOP_WORDS, STOP_PHRASES, STRONG_IDENTITY_TERMS
+from hotel_data.pipeline.preprocessor.utils.constants import (
+    STOP_WORDS,
+    STOP_PHRASES,
+    STRONG_IDENTITY_TERMS,
+)
 from hotel_data.config.scoring_config import ScoringConstants
 import pyspark.sql.functions as F
 import pyspark.sql.types as T
@@ -20,7 +24,7 @@ def extract_units(text):
     units = set()
 
     # 1. Arabic Numbers (e.g., "1", "101")
-    units.update(re.findall(r'\d+', text))
+    units.update(re.findall(r"\d+", text))
 
     # 2. Roman Numerals (Phase I, II, V...)
     # Pattern must be defined in ScoringConstants or locally
@@ -53,6 +57,7 @@ def calculate_unit_score(s1: str, s2: str) -> float:
         return 0.0
 
     return 1.0
+
 
 # def get_numeric_penalty(s1: str, s2: str) -> float:
 #     """
@@ -100,7 +105,7 @@ def bigram_jaccard(s1: str, s2: str) -> float:
     s2 = s2.lower().strip()
 
     def to_bigrams(text: str) -> set:
-        return {text[i:i+2] for i in range(len(text) - 1)}
+        return {text[i : i + 2] for i in range(len(text) - 1)}
 
     bg1 = to_bigrams(s1)
     bg2 = to_bigrams(s2)
@@ -115,7 +120,9 @@ def bigram_jaccard(s1: str, s2: str) -> float:
     return intersection / union if union > 0 else 0.0
 
 
-def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleaning: bool = True) -> float:
+def enhanced_name_scorer(
+    s1: str, s2: str, algo: str = "jaccard", perform_cleaning: bool = True
+) -> float:
     """
     Calculates a similarity score based on the selected algorithm.
 
@@ -149,8 +156,7 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
                 text = re.sub(pattern, " ", text)
 
         # 2. Standard Cleanup (Punctuation)
-        text = text.replace(',', ' ').replace(
-            '-', ' ').replace('.', ' ').strip()
+        text = text.replace(",", " ").replace("-", " ").replace(".", " ").strip()
         tokens = text.split()
 
         # 3. Filter Stop Words
@@ -209,6 +215,7 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
         if not str1 or not str2:
             final_score = ScoringConstants.RECONSTRUCTION_EMPTY_SCORE
         else:
+
             def longest_common_substring(a, b):
                 m = [[0] * (1 + len(b)) for i in range(1 + len(a))]
                 longest = 0
@@ -237,8 +244,10 @@ def enhanced_name_scorer(s1: str, s2: str, algo: str = 'jaccard', perform_cleani
             final_score = ScoringConstants.RECONSTRUCTION_EMPTY_SCORE
 
         # Single Letter Guard
-        elif (len(str1) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING or len(
-                str2) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING) and str1 != str2:
+        elif (
+            len(str1) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING
+            or len(str2) < ScoringConstants.MIN_CHARS_REQUIRED_FOR_MATCHING
+        ) and str1 != str2:
             final_score = ScoringConstants.MIN_CHARS_MISSING_SCORE
 
         else:
@@ -298,7 +307,7 @@ def _name_residual_score(name_a: str, name_b: str, jaccard_score: float) -> floa
 
     # 3. Clean and Tokenize
     def get_clean_set(text):
-        text = text.lower().replace(',', ' ').replace('-', ' ').replace('.', ' ')
+        text = text.lower().replace(",", " ").replace("-", " ").replace(".", " ")
         return {t for t in text.split() if t not in STOP_WORDS and t.isalnum()}
 
     set_a = get_clean_set(name_a)

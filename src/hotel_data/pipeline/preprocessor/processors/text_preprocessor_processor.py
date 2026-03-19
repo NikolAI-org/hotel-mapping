@@ -2,7 +2,9 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
-from hotel_data.pipeline.preprocessor.processors.smart_cleaner import normalize_real_estate_udf
+from hotel_data.pipeline.preprocessor.processors.smart_cleaner import (
+    normalize_real_estate_udf,
+)
 
 
 class TextPreprocessorProcessor(BaseProcessor[DataFrame]):
@@ -26,8 +28,9 @@ class TextPreprocessorProcessor(BaseProcessor[DataFrame]):
         name_expr = normalize_real_estate_udf(F.col(self.name_input_col))
         address_expr = normalize_real_estate_udf(F.col(self.address_input_col))
 
-        return (
-            df
-            .withColumn(self.name_output_col, F.trim(F.regexp_replace(name_expr, r"\\s+", " ")))
-            .withColumn(self.address_output_col, F.trim(F.regexp_replace(address_expr, r"\\s+", " ")))
+        return df.withColumn(
+            self.name_output_col, F.trim(F.regexp_replace(name_expr, r"\\s+", " "))
+        ).withColumn(
+            self.address_output_col,
+            F.trim(F.regexp_replace(address_expr, r"\\s+", " ")),
         )

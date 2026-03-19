@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 88
+exclude = [
+  "venv",
+  ".venv",
+  ".git",
+  "build",
+  "dist",
+  "spark/jars",
+  "clustering_pipeline_derby/metastore_db",
+  "derby/metastore_db",
+]

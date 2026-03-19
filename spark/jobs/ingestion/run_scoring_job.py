@@ -1,6 +1,13 @@
-from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import HotelPairScorerProcessor
+from hotel_data.pipeline.preprocessor.processors.hotel_pair_scorer_processor import (
+    HotelPairScorerProcessor,
+)
 from hotel_data.delta.delta_table_manager import DeltaTableManager
-from hotel_data.config.paths import BASE_DELTA_PATH, CATALOG_NAME, SCHEMA_NAME, TABLE_HOTELS_PAIRS_NAME
+from hotel_data.config.paths import (
+    BASE_DELTA_PATH,
+    CATALOG_NAME,
+    SCHEMA_NAME,
+    TABLE_HOTELS_PAIRS_NAME,
+)
 from pyspark.sql import functions as F
 from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, StringType
@@ -15,10 +22,12 @@ sys.path.append('/opt/airflow')
 
 def create_spark_session(app_name: str) -> SparkSession:
     return (
-        SparkSession.builder
-        .appName(app_name)
+        SparkSession.builder.appName(app_name)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config(
+            "spark.sql.catalog.spark_catalog",
+            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.shuffle.compress", "true")
         .config("spark.shuffle.spill.compress", "true")
@@ -50,8 +59,7 @@ def run_job():
 
     # Make sure geoHash is Array[String], nullable
     hotels_df = hotels_df.withColumn(
-        "geoHash",
-        F.col("geoHash").cast(ArrayType(StringType(), containsNull=True))
+        "geoHash", F.col("geoHash").cast(ArrayType(StringType(), containsNull=True))
     )
 
     challenger_df = hotels_df.filter(F.col("providerName") == provider_name)
@@ -67,24 +75,26 @@ def run_job():
 
     print(f"--- Upserting into Delta Table: {TABLE_HOTELS_PAIRS_NAME} ---")
     scored_pairs_df = scored_pairs_df.filter(
-        F.col("providerHotelId_i").isNotNull() & F.col(
-            "providerHotelId_j").isNotNull()
+        F.col("providerHotelId_i").isNotNull() & F.col("providerHotelId_j").isNotNull()
     )
 
     # Build order-independent pair keys so (A,B) and (B,A) merge into one record.
-    scored_pairs_df = scored_pairs_df.withColumn(
-        "pair_key_i",
-        F.concat_ws(":", F.col("providerName_i"), F.col("providerHotelId_i"))
-    ).withColumn(
-        "pair_key_j",
-        F.concat_ws(":", F.col("providerName_j"), F.col("providerHotelId_j"))
-    ).withColumn(
-        "pair_key_left",
-        F.least(F.col("pair_key_i"), F.col("pair_key_j"))
-    ).withColumn(
-        "pair_key_right",
-        F.greatest(F.col("pair_key_i"), F.col("pair_key_j"))
-    ).dropDuplicates(["pair_key_left", "pair_key_right"]).drop("pair_key_i", "pair_key_j")
+    scored_pairs_df = (
+        scored_pairs_df.withColumn(
+            "pair_key_i",
+            F.concat_ws(":", F.col("providerName_i"), F.col("providerHotelId_i")),
+        )
+        .withColumn(
+            "pair_key_j",
+            F.concat_ws(":", F.col("providerName_j"), F.col("providerHotelId_j")),
+        )
+        .withColumn("pair_key_left", F.least(F.col("pair_key_i"), F.col("pair_key_j")))
+        .withColumn(
+            "pair_key_right", F.greatest(F.col("pair_key_i"), F.col("pair_key_j"))
+        )
+        .dropDuplicates(["pair_key_left", "pair_key_right"])
+        .drop("pair_key_i", "pair_key_j")
+    )
 
     manager.merge_table(
         table_name=TABLE_HOTELS_PAIRS_NAME,

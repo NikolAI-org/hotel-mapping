@@ -31,7 +31,7 @@ def _type_match_score(type_a: str, type_b: str) -> float:
         {"hotel", "resort", "motel", "inn"},
         {"villa", "home", "chalet", "house"},
         {"condo", "apartment", "aparthotel", "flat"},
-        {"hostel", "dormitory"}
+        {"hostel", "dormitory"},
     ]
 
     # 0.8 = Soft mismatch (e.g., Hotel vs Resort)
@@ -49,7 +49,8 @@ type_match_udf = F.udf(_type_match_score, T.FloatType())
 # 2. Unit / Phase Match Score
 # ==========================================
 _ROMAN_TOKEN_RE = re.compile(
-    r"^(?=[ivxlcdm]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$")
+    r"^(?=[ivxlcdm]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$"
+)
 
 # TYPED Inventory
 # Catches: "2 bhk", "ii bath", "1 bedroom", "bed 2", "bath iv"
@@ -71,10 +72,10 @@ _NAME_UNIT_CONTEXT_RE = re.compile(
 )
 
 # Standalone (UNTYPED)
-_NAME_UNIT_STANDALONE_RE = re.compile(
-    r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
+_NAME_UNIT_STANDALONE_RE = re.compile(r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
 _NAME_UNIT_COMPACT_RE = re.compile(
-    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*(?:bhk|bed|bedroom|bath|beds|bedrooms|baths|bathrooms)\b")
+    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*(?:bhk|bed|bedroom|bath|beds|bedrooms|baths|bathrooms)\b"
+)
 
 
 def _roman_to_int(token: str) -> int:
@@ -148,8 +149,10 @@ def _extract_name_units(name: str) -> Set[str]:
         # Only process if this text wasn't already consumed by Value-First!
         # (This prevents "bedroom ii" from stealing the "ii" from "ii bath")
         span = match.span()
-        overlap = any(start <= span[0] < end or start <
-                      span[1] <= end for start, end in consumed_spans)
+        overlap = any(
+            start <= span[0] < end or start < span[1] <= end
+            for start, end in consumed_spans
+        )
 
         if not overlap:
             typ, val = match.groups()
@@ -178,8 +181,7 @@ def _extract_name_units(name: str) -> Set[str]:
 
     # Normalize standalone + compact tokens with strict filtering.
     normalized_other = {
-        _normalize_unit_token(token)
-        for token in (standalone_tokens + compact_tokens)
+        _normalize_unit_token(token) for token in (standalone_tokens + compact_tokens)
     }
 
     normalized_untyped = normalized_context.union(normalized_other)
@@ -231,7 +233,9 @@ unit_match_udf = F.udf(_unit_match_score, T.FloatType())
 # ==========================================
 # 3. Address Unit Match Score
 # ==========================================
-def _address_unit_match_score(addr_a: str, addr_b: str, postal_a: str = None, postal_b: str = None) -> float:
+def _address_unit_match_score(
+    addr_a: str, addr_b: str, postal_a: str = None, postal_b: str = None
+) -> float:
     """
     Address-specific unit scorer.
 

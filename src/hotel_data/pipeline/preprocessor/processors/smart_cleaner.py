@@ -4,40 +4,45 @@ import re
 from hotel_data.config.scoring_config import ScoringConstants
 
 # Words that indicate the core entity type. We should STOP stripping if we hit these.
-#STRUCTURE_WORDS = {
+# STRUCTURE_WORDS = {
 #    'hotel', 'inn', 'resort', 'motel', 'suites', 'suite', 'apartments', 'villas',
 #    'lodge', 'hostel', 'residency', 'palace', 'plaza', 'square', 'grand', 'royal',
 #    'stay', 'house', 'home', 'club', 'cottage', 'camp'
-#}
+# }
+
 
 def normalize_real_estate_terms(text: str) -> str:
     """
     Injects spaces into squashed real-estate terminology to assist downstream tokenization.
     """
-    if not text: 
+    if not text:
         return text
-    
+
     text = text.lower()
-    
+
     # FIX FOR CASE 2: "2bhk" -> "2 bhk"
     # Safely splits digits from specific real estate words.
-    text = re.sub(r'(\d+)(bhk|bed|bedroom|bath)\b', r'\1 \2', text)
-    
+    text = re.sub(r"(\d+)(bhk|bed|bedroom|bath)\b", r"\1 \2", text)
+
     # FIX FOR CASE 3: "bedroomiibath" -> "bedroom ii bath"
     # Looks for a prefix term, a roman numeral (I, II, III, IV, V), and an optional suffix term.
-    text = re.sub(r'(bedroom|bed|bath|bhk)(i{1,3}|iv|v)(bath|bedroom|bhk)?\b', r'\1 \2 \3', text)
-    
+    text = re.sub(
+        r"(bedroom|bed|bath|bhk)(i{1,3}|iv|v)(bath|bedroom|bhk)?\b", r"\1 \2 \3", text
+    )
+
     # Clean up any accidental double spaces we just created
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r"\s+", " ", text).strip()
+
 
 normalize_real_estate_udf = udf(normalize_real_estate_terms, StringType())
+
 
 def smart_suffix_remover(name, address_line):
     if not name or not address_line:
         return name
 
     name_tokens = name.lower().strip().split()
-    address_tokens = set(re.findall(r'\w+', address_line.lower()))
+    address_tokens = set(re.findall(r"\w+", address_line.lower()))
 
     cut_off_index = len(name_tokens)
 
@@ -52,7 +57,7 @@ def smart_suffix_remover(name, address_line):
 
         # 2. THE NEW GUARDRAIL: Look at what will be left if we delete this token.
         leftover_tokens = name_tokens[:i]
-        
+
         # If the leftover string is empty OR consists ONLY of generic words (like "hotel"),
         # we MUST stop stripping to protect the core identity.
         is_only_generic_left = True
@@ -60,9 +65,9 @@ def smart_suffix_remover(name, address_line):
             if leftover not in ScoringConstants.LOW_INFO_TERMS:
                 is_only_generic_left = False
                 break
-                
+
         if not leftover_tokens or is_only_generic_left:
-            break # Stop! Don't delete the core identifier!
+            break  # Stop! Don't delete the core identifier!
 
         # 3. If it passed the guardrails, mark the index for deletion
         cut_off_index = i

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Union, Any
 
+
 class ScoringConstants:
     """
     Centralized configuration for scoring rewards and penalties.
@@ -27,7 +28,7 @@ class ScoringConstants:
         "motor inn": "motel",
         "motel": "motor inn",
         "hostel": "backpacker",
-        "resort": "hotel"  # Often interchangeable in data
+        "resort": "hotel",  # Often interchangeable in data
     }
     # If types are completely different (e.g. Hostel vs Villa), give this score
     TYPE_MISMATCH_SCORE = 0.0
@@ -62,21 +63,82 @@ class ScoringConstants:
     # The set of words considered "Low Information"
     LOW_INFO_TERMS = {
         # Accommodation Types (moved from STOP_WORDS)
-        'hotel', 'hotels', 'inn', 'lodge', 'motel', 'resort', 'spa', 'hostal',
-        'guesthouse', 'guest', 'house', 'casa', 'auberge', 'apart-hotel', 'apartment',
-        'suites', 'suite', 'executive', 'residences', 'residency', 'b&b', 'bed and breakfast', 'hostel',
-        'villa', 'cottage', 'home', 'club', 'dormitory', 'annex',
-
+        "hotel",
+        "hotels",
+        "inn",
+        "lodge",
+        "motel",
+        "resort",
+        "spa",
+        "hostal",
+        "guesthouse",
+        "guest",
+        "house",
+        "casa",
+        "auberge",
+        "apart-hotel",
+        "apartment",
+        "suites",
+        "suite",
+        "executive",
+        "residences",
+        "residency",
+        "b&b",
+        "bed and breakfast",
+        "hostel",
+        "villa",
+        "cottage",
+        "home",
+        "club",
+        "dormitory",
+        "annex",
         # Locations/Features (Generic)
-        'city', 'town', 'village', 'metropolitan', 'airport', 'beach',
-        'waterfront', 'harbor', 'view', 'views', 'vista', 'garden', 'gardens',
-        'park', 'plaza', 'square', 'terrace', 'court', 'quarters',
-
+        "city",
+        "town",
+        "village",
+        "metropolitan",
+        "airport",
+        "beach",
+        "waterfront",
+        "harbor",
+        "view",
+        "views",
+        "vista",
+        "garden",
+        "gardens",
+        "park",
+        "plaza",
+        "square",
+        "terrace",
+        "court",
+        "quarters",
         # Generic Adjectives (These distinguish slightly, but are weak)
-        'grand', 'royal', 'king', 'queen', 'palace', 'imperial', 'crown',
-        'premier', 'prestige', 'deluxe', 'luxury', 'superior', 'exclusive',
-        'small', 'boutique', 'extended stay', 'budget', 'microtel',
-        'old', 'new', 'historic', 'vintage', 'modern', 'comfort', 'international', 'regency'
+        "grand",
+        "royal",
+        "king",
+        "queen",
+        "palace",
+        "imperial",
+        "crown",
+        "premier",
+        "prestige",
+        "deluxe",
+        "luxury",
+        "superior",
+        "exclusive",
+        "small",
+        "boutique",
+        "extended stay",
+        "budget",
+        "microtel",
+        "old",
+        "new",
+        "historic",
+        "vintage",
+        "modern",
+        "comfort",
+        "international",
+        "regency",
     }
 
     # Weight for unique terms (e.g., "Taj", "Marriott", "Amar")
@@ -84,18 +146,21 @@ class ScoringConstants:
     HIGH_INFO_WEIGHT = 1.0
 
 
-
 class ComparisonOperator(str, Enum):
     """Valid comparison operators for signals"""
+
     GTE = "gte"
     LTE = "lte"
     GT = "gt"
     LT = "lt"
 
+
 class LogicalOperator(str, Enum):
     """Valid logical operators for groups"""
+
     AND = "AND"
     OR = "OR"
+
 
 @dataclass
 class RuleConfig:
@@ -105,16 +170,16 @@ class RuleConfig:
       1. A LEAF (Signal): Has 'signal', 'threshold', 'comparator'
       2. A NODE (Group):  Has 'operator', 'rules'
     """
-    
+
     # --- Leaf Properties ---
     signal: Optional[str] = None
     threshold: Optional[float] = None
     comparator: ComparisonOperator = ComparisonOperator.GTE
-    
+
     # --- Node Properties ---
     operator: Optional[LogicalOperator] = None
     # We keep Optional here for flexibility, but default is empty list
-    rules: Optional[List['RuleConfig']] = field(default_factory=list)
+    rules: Optional[List["RuleConfig"]] = field(default_factory=list)
 
     @property
     def is_group(self) -> bool:
@@ -123,7 +188,7 @@ class RuleConfig:
 
     def validate(self) -> bool:
         """Validate rule consistency"""
-        
+
         # CASE 1: Logic Group (AND / OR)
         if self.operator:
             # A group should not have leaf properties
@@ -132,15 +197,15 @@ class RuleConfig:
                     f"Rule cannot be both a Group (operator={self.operator}) "
                     f"and a Signal ({self.signal})"
                 )
-            
+
             # FIX: Safely handle None by defaulting to empty list for iteration
             # This satisfies the type checker and prevents runtime errors
             safe_rules = self.rules or []
-            
+
             if not safe_rules:
-                 # Warning: Empty groups technically do nothing, but aren't fatal errors.
-                 pass
-            
+                # Warning: Empty groups technically do nothing, but aren't fatal errors.
+                pass
+
             # Recursively validate children
             for i, child in enumerate(safe_rules):
                 try:
@@ -154,20 +219,25 @@ class RuleConfig:
         elif self.signal:
             if self.threshold is None:
                 raise ValueError(f"Signal '{self.signal}' is missing 'threshold'")
-            
+
             # Validate threshold range (assuming standard -1.0 to 1.0 scoring)
             if not (-1.0 <= self.threshold <= 1.0):
                 # You can comment this out if your scores are not normalized
-                pass 
-                
+                pass
+
             if self.comparator not in ComparisonOperator:
-                raise ValueError(f"Invalid comparator for '{self.signal}': {self.comparator}")
+                raise ValueError(
+                    f"Invalid comparator for '{self.signal}': {self.comparator}"
+                )
 
         # CASE 3: Invalid Empty Config
         else:
-            raise ValueError("RuleConfig must have either 'operator' (Group) or 'signal' (Leaf)")
-            
+            raise ValueError(
+                "RuleConfig must have either 'operator' (Group) or 'signal' (Leaf)"
+            )
+
         return True
+
 
 @dataclass
 class ScoringConfig:
@@ -175,13 +245,13 @@ class ScoringConfig:
     Master Scoring Configuration.
     Holds a single root 'match_logic' which is a RuleConfig tree.
     """
-    
+
     match_logic: RuleConfig
-    
+
     # Legacy fields
-    condition_groups: Optional[List[Any]] = field(default_factory=list) 
+    condition_groups: Optional[List[Any]] = field(default_factory=list)
     group_operator: Optional[LogicalOperator] = LogicalOperator.AND
-    
+
     def __post_init__(self):
         """
         Auto-convert dictionary input to RuleConfig objects.
@@ -203,7 +273,7 @@ class ScoringConfig:
         if "match_logic" in config_dict:
             root_rule = cls._deserialize_rule(config_dict["match_logic"])
             return cls(match_logic=root_rule)
-            
+
         # 2. Safety Valve for Legacy Configs
         elif "condition_groups" in config_dict:
             raise ValueError(
@@ -216,22 +286,22 @@ class ScoringConfig:
     @staticmethod
     def _deserialize_rule(data: Dict) -> RuleConfig:
         """Recursively parses a dict into a RuleConfig"""
-        
+
         # A) Is it a Group?
         if "operator" in data:
             op_str = data["operator"].upper()
             try:
                 operator = LogicalOperator[op_str]
             except KeyError:
-                 raise ValueError(f"Invalid operator: {op_str}")
-            
+                raise ValueError(f"Invalid operator: {op_str}")
+
             raw_rules = data.get("rules", [])
             parsed_rules = []
             for r in raw_rules:
                 parsed_rules.append(ScoringConfig._deserialize_rule(r))
-                
+
             return RuleConfig(operator=operator, rules=parsed_rules)
-            
+
         # B) Is it a Leaf?
         elif "signal" in data:
             comp_str = data.get("comparator", "gte").lower()
@@ -248,25 +318,28 @@ class ScoringConfig:
             return RuleConfig(
                 signal=data["signal"],
                 threshold=float(data["threshold"]),
-                comparator=comparator
+                comparator=comparator,
             )
-            
+
         else:
-            raise ValueError(f"Rule block must contain 'operator' or 'signal'. Got keys: {list(data.keys())}")
+            raise ValueError(
+                f"Rule block must contain 'operator' or 'signal'. Got keys: {list(data.keys())}"
+            )
+
 
 @dataclass
 class StorageConfig:
     """Configuration for storage (MinIO, Delta Lake)"""
-    
+
     # MinIO configuration
-    minio_endpoint: str          # e.g., "http://minio:9000"
-    minio_access_key: str        # e.g., "minioadmin"
-    minio_secret_key: str        # e.g., "minioadmin"
-    minio_bucket: str            # e.g., "hotel-data"
-    
+    minio_endpoint: str  # e.g., "http://minio:9000"
+    minio_access_key: str  # e.g., "minioadmin"
+    minio_secret_key: str  # e.g., "minioadmin"
+    minio_bucket: str  # e.g., "hotel-data"
+
     # Delta Lake configuration
-    delta_path: str              # e.g., "s3a://hotel-data/delta"
-    
+    delta_path: str  # e.g., "s3a://hotel-data/delta"
+
     def validate(self) -> bool:
         """Validate storage config"""
         if not self.minio_endpoint or not self.delta_path:
@@ -277,25 +350,26 @@ class StorageConfig:
 @dataclass
 class ClusteringConfig:
     """Configuration for clustering strategy"""
+
     algorithm: str
     transitivity: bool = True
-    
-    
+
     def validate(self) -> bool:
         """Validate clustering config"""
         if not self.algorithm:
             raise ValueError("algorithm must be specified")
-        return True    
+        return True
+
 
 @dataclass
 class StreamingConfig:
     """Configuration for streaming pipeline"""
-    
-    enabled: bool                # Whether streaming is enabled
-    checkpoint_path: str         # e.g., "s3a://hotel-data/checkpoints"
-    trigger_interval: str        # e.g., "5 minutes"
-    max_batch_size: int          # e.g., 10000
-    
+
+    enabled: bool  # Whether streaming is enabled
+    checkpoint_path: str  # e.g., "s3a://hotel-data/checkpoints"
+    trigger_interval: str  # e.g., "5 minutes"
+    max_batch_size: int  # e.g., 10000
+
     def validate(self) -> bool:
         """Validate streaming config"""
         if self.enabled and not self.checkpoint_path:
@@ -306,10 +380,11 @@ class StreamingConfig:
 @dataclass
 class LoggingConfig:
     """Configuration for logging"""
-    level: str                 # e.g., "INFO", "DEBUG", "ERROR"
-    format: str                # e.g., "%(asctime)s - %(name)s - %(message)s"
-    output_file: Optional[str] # e.g., "/var/log/hotel-clustering.log"
-    
+
+    level: str  # e.g., "INFO", "DEBUG", "ERROR"
+    format: str  # e.g., "%(asctime)s - %(name)s - %(message)s"
+    output_file: Optional[str]  # e.g., "/var/log/hotel-clustering.log"
+
     def validate(self) -> bool:
         """Validate logging config"""
         valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -326,33 +401,37 @@ class LoggingConfig:
             output_file=config_dict.get("output_file"),
         )
 
+
 @dataclass
 class DeltaConfig:
     catalog_name: str
     schema_name: str
     base_path: str
-    
+
     def validate(self) -> bool:
         """Validate streaming config"""
         if not self.catalog_name and not self.schema_name and not self.base_path:
-            raise ValueError("Catlog name, Schema name and/or base path is not defined for delta lake.")
+            raise ValueError(
+                "Catlog name, Schema name and/or base path is not defined for delta lake."
+            )
         return True
+
 
 @dataclass
 class HotelClusteringConfig:
     """
     Master configuration for entire hotel clustering system
-    
+
     Contains all sub-configurations for different components
     """
-    
+
     storage: StorageConfig
     scoring: ScoringConfig
     clustering: ClusteringConfig
     streaming: StreamingConfig
     logging: LoggingConfig
     delta_lake: DeltaConfig
-    
+
     def validate(self) -> bool:
         """Validate entire configuration"""
         self.storage.validate()
@@ -360,15 +439,15 @@ class HotelClusteringConfig:
         self.clustering.validate()
         self.streaming.validate()
         self.logging.validate()
-        
+
         print("✅ HotelClusteringConfig validated successfully")
         return True
-    
+
     @classmethod
     def from_dict(cls, config_dict: Dict) -> "HotelClusteringConfig":
         """
         Create HotelClusteringConfig from dictionary
-        
+
         Used by ConfigLoader when parsing YAML
         """
         return cls(

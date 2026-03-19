@@ -7,6 +7,7 @@ from hotel_data.pipeline.preprocessor.core.base_reader import BaseReader
 
 import os
 
+
 class JSONStreamReader(BaseReader):
     def __init__(self, folder_path: str, schema: StructType):
         if os.path.exists(folder_path):
@@ -21,4 +22,3 @@ class JSONStreamReader(BaseReader):
             reader = reader.schema(self.schema)
         print(f"Reading stream from {self.folder_path}")
         return reader.option("recursiveFileLookup", "true").json(self.folder_path)
-

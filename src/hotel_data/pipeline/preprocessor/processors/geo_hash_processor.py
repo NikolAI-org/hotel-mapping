@@ -1,7 +1,7 @@
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, udf, struct
-from pyspark.sql.types import ArrayType, StringType, DoubleType,StructType
+from pyspark.sql.types import ArrayType, StringType, DoubleType, StructType
 import h3
 from typing import List
 import math
@@ -9,59 +9,56 @@ import math
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
 # Assuming BaseProcessor and hotel_data are available
-# from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor 
+# from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
 
 # --- Configuration ---
 H3_RESOLUTION = 8
-K_RING_DISTANCE = 1 # k=1 is the central cell + 6 immediate neighbors
+K_RING_DISTANCE = 1  # k=1 is the central cell + 6 immediate neighbors
 
 
 class GeoHashProcessor(BaseProcessor[DataFrame]):
-
-    def __init__(self, resolution: int = H3_RESOLUTION, k_distance: int = K_RING_DISTANCE):
+    def __init__(
+        self, resolution: int = H3_RESOLUTION, k_distance: int = K_RING_DISTANCE
+    ):
         self.resolution = resolution
         self.k_distance = k_distance
-        
+
         # Register the H3 logic as a PySpark UDF
         self.geohash_udf = F.udf(
-            self._h3_k_ring_geohashes, 
-            ArrayType(StringType()) # type: ignore
+            self._h3_k_ring_geohashes,
+            ArrayType(StringType()),  # type: ignore
         )
 
     # ----------------------------------------------------
     # PySpark Processing Method
     # ----------------------------------------------------
-    
 
     def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         """
-        Applies the H3 geohash UDF and writes the result directly to the 
+        Applies the H3 geohash UDF and writes the result directly to the
         top-level 'geohash' column in the flat schema.
         All other columns are preserved automatically.
         """
-        print(f"Starting H3 GeoHash calculation at Resolution={self.resolution} with K-ring={self.k_distance}...")
-        
+        print(
+            f"Starting H3 GeoHash calculation at Resolution={self.resolution} with K-ring={self.k_distance}..."
+        )
+
         # Ensure the input columns are cast to the correct type for the UDF
         # UDF inputs must be numeric types (Double/Float)
-        lat_col = col('geoCode_lat').cast('double')
-        long_col = col('geoCode_long').cast('double')
+        lat_col = col("geoCode_lat").cast("double")
+        long_col = col("geoCode_long").cast("double")
         res_col = F.lit(self.resolution)
         k_col = F.lit(self.k_distance)
 
-        # Calculate the hexagonal geoHashes array and write it directly 
-        # to the 'geohash' column. This will overwrite any existing data 
+        # Calculate the hexagonal geoHashes array and write it directly
+        # to the 'geohash' column. This will overwrite any existing data
         # in that column, which is what you intended.
         final_df = df.withColumn(
-            'geohash', # Target column name
-            self.geohash_udf(
-                lat_col, 
-                long_col, 
-                res_col, 
-                k_col
-            )
+            "geohash",  # Target column name
+            self.geohash_udf(lat_col, long_col, res_col, k_col),
         )
-        
+
         print("GeoHash mapping complete. Data written to 'geohash' column.")
         return final_df
 
@@ -69,7 +66,9 @@ class GeoHashProcessor(BaseProcessor[DataFrame]):
     # H3 Logic (Static Helper for UDF)
     # ----------------------------------------------------
     @staticmethod
-    def _h3_k_ring_geohashes(lat: float, lon: float, resolution: int, k_distance: int) -> List[str]:
+    def _h3_k_ring_geohashes(
+        lat: float, lon: float, resolution: int, k_distance: int
+    ) -> List[str]:
         """
         Calculates the central H3 cell and its neighbors within k_distance.
         This function runs inside the Spark executor, not the driver.
@@ -94,7 +93,7 @@ class GeoHashProcessor(BaseProcessor[DataFrame]):
 
         # --- 3. Convert each sample point to H3 cell ---
         cells = set()
-        for (p_lat, p_lon) in points:
+        for p_lat, p_lon in points:
             cell = h3.latlng_to_cell(p_lat, p_lon, resolution)
             cells.add(cell)
 
