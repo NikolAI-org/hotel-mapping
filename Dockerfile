@@ -1,6 +1,6 @@
 
-ARG DOCKER_PLATFORM
-ARG JAVA_HOME_PATH
+ARG DOCKER_PLATFORM=linux/arm64
+ARG JAVA_HOME_PATH=/usr/lib/jvm/java-17-openjdk-arm64
 FROM apache/airflow:2.8.0-python3.11
 
 USER root

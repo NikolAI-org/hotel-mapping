@@ -3,8 +3,8 @@ x-airflow-common: &airflow-common
     context: .
     dockerfile: Dockerfile
     args:
-      JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
-      DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
+      JAVA_HOME_PATH: ${JAVA_HOME_PATH:-/usr/lib/jvm/java-17-openjdk-arm64}
+      DOCKER_PLATFORM: ${DOCKER_PLATFORM:-linux/arm64}
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
@@ -22,7 +22,7 @@ x-airflow-common: &airflow-common
     MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     # Spark Configuration
     SPARK_HOME: /opt/spark
-    JAVA_HOME: ${JAVA_HOME_PATH:-}
+    JAVA_HOME: ${JAVA_HOME_PATH:-/usr/lib/jvm/java-17-openjdk-arm64}
     # Spark Resource Allocation (Reads from .env, falls back to defaults)
     SPARK_INGESTION_MEM: ${SPARK_INGESTION_MEM:-3g}
     SPARK_INGESTION_CORES: ${SPARK_INGESTION_CORES:-1}
@@ -278,8 +278,8 @@ services:
       context: .
       dockerfile: Dockerfile.spark
       args:
-        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
-        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
+        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-linux/arm64}
+        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-/usr/lib/jvm/java-17-openjdk-arm64}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     environment:
       - SPARK_NO_DAEMONIZE=true
@@ -310,8 +310,8 @@ services:
       context: .
       dockerfile: Dockerfile.spark
       args:
-        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
-        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
+        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-linux/arm64}
+        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-/usr/lib/jvm/java-17-openjdk-arm64}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
       - SPARK_NO_DAEMONIZE=true
@@ -370,8 +370,8 @@ services:
       context: .
       dockerfile: Dockerfile.spark
       args:
-        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
-        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
+        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-linux/arm64}
+        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-/usr/lib/jvm/java-17-openjdk-arm64}
     container_name: hotel-mapping-jupyter
     ports:
       - "8888:8888"
