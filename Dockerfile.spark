@@ -40,16 +40,17 @@ RUN echo "Creating work and logs directories..." && \
     mkdir -p ${SPARK_HOME}/work ${SPARK_HOME}/logs && \
     chmod -R 777 ${SPARK_HOME}/work ${SPARK_HOME}/logs
 
+# 1. Install CPU-only PyTorch FIRST so Docker caches this heavy layer forever
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu    
+
 # Install PySpark
-RUN pip install \
-    #    --no-cache-dir \
+RUN pip install --no-cache-dir \
     pyspark==3.5.3 \
     h3==4.3.1 \
     pandas==2.1.4 \
     py4j==0.10.9.7 \
     pyarrow==14.0.2 \
     sentence-transformers==3.0.1 \
-    torch \
     fuzzywuzzy \
     python-Levenshtein \
     jupyterlab

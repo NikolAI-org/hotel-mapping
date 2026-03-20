@@ -41,9 +41,10 @@ USER airflow
 #    pandas==2.1.4 \
 #    pyarrow==14.0.2
 
-# Copy requirements and install
+# Copy requirements and install (Forcing CPU-only PyTorch for Airflow too)
 COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt && \
-    pip install --force-reinstall "celery==5.3.6"
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r /requirements.txt && \
+    pip install --no-cache-dir --force-reinstall "celery==5.3.6"
 
 USER airflow

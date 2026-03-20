@@ -23,6 +23,13 @@ x-airflow-common: &airflow-common
     # Spark Configuration
     SPARK_HOME: /opt/spark
     JAVA_HOME: ${JAVA_HOME_PATH:-}
+    # Spark Resource Allocation (Reads from .env, falls back to defaults)
+    SPARK_INGESTION_MEM: ${SPARK_INGESTION_MEM:-3g}
+    SPARK_INGESTION_CORES: ${SPARK_INGESTION_CORES:-1}
+    SPARK_SCORING_MEM: ${SPARK_SCORING_MEM:-12g}
+    SPARK_SCORING_CORES: ${SPARK_SCORING_CORES:-1}
+    SPARK_CLUSTERING_MEM: ${SPARK_CLUSTERING_MEM:-4g}
+    SPARK_CLUSTERING_CORES: ${SPARK_CLUSTERING_CORES:-1}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -358,32 +365,32 @@ services:
       /bin/sh -c " until (/usr/bin/mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY} ${AWS_SECRET_KEY}) do echo 'Waiting for MinIO...' && sleep 1; done; /usr/bin/mc mb myminio/data-lake --ignore-existing; /usr/bin/mc mb myminio/delta-lake --ignore-existing; /usr/bin/mc mb myminio/test-data-lake --ignore-existing; /usr/bin/mc mb myminio/test-delta-lake --ignore-existing; /usr/bin/mc anonymous set download myminio/data-lake; /usr/bin/mc anonymous set download myminio/delta-lake; /usr/bin/mc anonymous set download myminio/test-data-lake; /usr/bin/mc anonymous set download myminio/test-delta-lake; exit 0; "
     networks:
       - delta-lake-network
-  # jupyter-spark:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.spark
-  #     args:
-  #       DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
-  #       JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
-  #   container_name: hotel-mapping-jupyter
-  #   ports:
-  #     - "8888:8888"
-  #   environment:
-  #     - PYSPARK_PYTHON=/usr/local/bin/python3
-  #     - PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3
-  #     - PYTHONPATH=/opt/airflow
-  #     - JUPYTER_RUNTIME_DIR=/tmp/jupyter/runtime
-  #     - JUPYTER_DATA_DIR=/tmp/jupyter/data
-  #     - JUPYTER_CONFIG_DIR=/tmp/jupyter/config
-  #   volumes:
-  #     # Save notebooks to your local machine so you don't lose them
-  #     - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
-  #     - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
-  #   networks:
-  #     - delta-lake-network
-  #   # Starts Jupyter Lab without a password for easy local access
-  #   command: >
-  #     jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --notebook-dir=/opt/spark-jobs
+  jupyter-spark:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+      args:
+        DOCKER_PLATFORM: ${DOCKER_PLATFORM:-}
+        JAVA_HOME_PATH: ${JAVA_HOME_PATH:-}
+    container_name: hotel-mapping-jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - PYSPARK_PYTHON=/usr/local/bin/python3
+      - PYSPARK_DRIVER_PYTHON=/usr/local/bin/python3
+      - PYTHONPATH=/opt/airflow
+      - JUPYTER_RUNTIME_DIR=/tmp/jupyter/runtime
+      - JUPYTER_DATA_DIR=/tmp/jupyter/data
+      - JUPYTER_CONFIG_DIR=/tmp/jupyter/config
+    volumes:
+      # Save notebooks to your local machine so you don't lose them
+      - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
+      - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
+    networks:
+      - delta-lake-network
+    # Starts Jupyter Lab without a password for easy local access
+    command: >
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --notebook-dir=/opt/spark-jobs
 
 volumes:
   postgres-db-volume:

@@ -1,23 +1,24 @@
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.empty import EmptyOperator
-from datetime import datetime
-import subprocess
-import os
 import json
+import os
 import select
+import subprocess
+from datetime import datetime
+
+from airflow import DAG
+from airflow.operators.empty import EmptyOperator
+from airflow.operators.python import PythonOperator
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
 SUPPLIERS = [
     "ean",
-    "hotelbeds",
-    # "ean", "bookingcom"
-    # "ratehawk",
-    # "grnconnect",
-    # "hobse",
+    # "hotelbeds",
+    "bookingcom",
+    "ratehawk",
+    "grnconnect",
+    "hobse",
 ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
-COUNTRY = "uae"
+COUNTRY = "india"
 # COUNTRY = 'mumbai'
 
 # Keep clustering defaults aligned with cluster DAG behavior.
@@ -215,14 +216,14 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     #   clustering: graph algorithm, moderate memory, no heavy Python deps
     #               4g + 10% overhead = 4.4g → floor(22/4.4)=5 executors, 5 cores active
     if job_type == "ingestion":
-        executor_memory = "3g"
-        executor_cores = "1"
+        executor_memory = os.environ.get("SPARK_INGESTION_MEM", "3g")
+        executor_cores = os.environ.get("SPARK_INGESTION_CORES", "1")
     elif job_type == "scoring":
-        executor_memory = "12g"
-        executor_cores = "1"
+        executor_memory = os.environ.get("SPARK_SCORING_MEM", "12g")
+        executor_cores = os.environ.get("SPARK_SCORING_CORES", "1")
     else:  # clustering
-        executor_memory = "4g"
-        executor_cores = "1"
+        executor_memory = os.environ.get("SPARK_CLUSTERING_MEM", "4g")
+        executor_cores = os.environ.get("SPARK_CLUSTERING_CORES", "1")
 
     # Build spark-submit command mimicking the working scripts
     spark_submit_cmd = [
