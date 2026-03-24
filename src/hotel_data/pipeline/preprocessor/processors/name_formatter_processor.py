@@ -1,16 +1,27 @@
-from typing import List
 import re
+from typing import List
 
-from pyspark.sql import DataFrame, Column
-from pyspark.sql.functions import col, trim, regexp_replace, udf
+from pyspark.sql import Column, DataFrame
+from pyspark.sql.functions import col, regexp_replace, trim, udf
 from pyspark.sql.types import StringType
 
+from hotel_data.config.scoring_config import ScoringConstants
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 from hotel_data.pipeline.preprocessor.processors.smart_cleaner import (
-    smart_suffix_udf,
     normalize_real_estate_udf,
+    smart_suffix_udf,
 )
-from hotel_data.config.scoring_config import ScoringConstants
+
+_LANDMARK_SUFFIX_RE = re.compile(
+    r"\s*(?:[-,:;|/]\s*)(?:behind|near(?:\s+to)?|nr\.?|next\s+to|close\s+to|opposite|opp\.?|beside|adjacent\s+to|across\s+from|facing)\b.*$",
+    flags=re.IGNORECASE,
+)
+
+
+def _strip_trailing_landmark_clause(text: str) -> str:
+    if not text:
+        return text
+    return _LANDMARK_SUFFIX_RE.sub("", text).strip()
 
 
 def _make_dynamic_cleaner(address_count: int):
@@ -60,6 +71,10 @@ def _make_dynamic_cleaner(address_count: int):
 
         # collapse multiple spaces into one and trim
         s = re.sub(r"\s+", " ", s).strip()
+
+        # Drop trailing landmark clauses like "- behind taj mahal palace..."
+        # so landmark references do not dominate normalized-name matching.
+        s = _strip_trailing_landmark_clause(s)
 
         # 1. ULTIMATE SAFETY: If we stripped everything, revert to original
         if len(s) == 0 and len(original_s) > 0:

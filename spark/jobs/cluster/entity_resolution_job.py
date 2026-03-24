@@ -1,4 +1,10 @@
-from hotel_data.delta.delta_table_manager import DeltaTableManager
+import json
+import os
+import sys
+
+from pyspark.sql import SparkSession
+
+import hotel_data.pipeline.scoring.scorers.overall_pair_scorer as overall_pair_scorer
 from hotel_data.config.paths import (
     BASE_DELTA_PATH,
     CATALOG_NAME,
@@ -6,12 +12,8 @@ from hotel_data.config.paths import (
     TABLE_HOTELS_NAME,
     TABLE_HOTELS_PAIRS_NAME,
 )
-import hotel_data.pipeline.scoring.scorers.overall_pair_scorer as overall_pair_scorer
+from hotel_data.delta.delta_table_manager import DeltaTableManager
 from spark.jobs.cluster.entity_resolution_pipeline import EntityResolutionPipeline
-from pyspark.sql import SparkSession
-import json
-import os
-import sys
 
 # This must be first line before any hotel data import
 sys.path.append("/opt/airflow")
@@ -42,9 +44,6 @@ def main():
         "t_low": float(os.getenv("THRESHOLD_LOW", 0.80)),
         "transitivity": transitivity,
     }
-
-    match_logic = json.loads(os.getenv("MATCH_LOGIC", "{}"))
-    print(f"⚙️ Loaded match logic1 : {json.dumps(match_logic, indent=2)}")
 
     match_logic = overall_pair_scorer._load_match_logic()
     print(f"⚙️ Loaded match logic2 : {json.dumps(match_logic, indent=2)}")

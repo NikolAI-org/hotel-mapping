@@ -45,125 +45,12 @@ CLUSTER_CONFIG = {
     "transitivity": True,
 }
 
-DEFAULT_MATCH_LOGIC = {
-    "operator": "AND",
-    "rules": [
-        {"signal": "geo_distance_km", "threshold": 0.5, "comparator": "lte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
-                {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
-                {
-                    "signal": "name_score_levenshtein",
-                    "threshold": 0.9,
-                    "comparator": "gte",
-                },
-                {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_jaccard",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_jaccard",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_lcs",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_lcs",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_levenshtein",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_levenshtein",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_sbert",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_sbert",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            "operator": "OR",
-            "rules": [
-                {
-                    "signal": "address_line1_score",
-                    "threshold": 0.2,
-                    "comparator": "gte",
-                },
-                {
-                    "signal": "address_sbert_score",
-                    "threshold": 0.2,
-                    "comparator": "gte",
-                },
-            ],
-        },
-        {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"},
-            ],
-        },
-        {"signal": "country_match", "threshold": 0.5, "comparator": "gte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"},
-            ],
-        },
-    ],
-}
-
 default_args = {
     "owner": "data-engineer",
     "depends_on_past": False,
     "start_date": datetime(2024, 1, 1),
     "retries": 0,
 }
-
 
 def run_spark_job_direct(job_type, supplier, **kwargs):
     """
@@ -195,7 +82,6 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
             WEIGHTS=json.dumps(CLUSTER_CONFIG["weights"]),
             THRESHOLD_HIGH=str(CLUSTER_CONFIG["threshold_high"]),
             THRESHOLD_LOW=str(CLUSTER_CONFIG["threshold_low"]),
-            MATCH_LOGIC=json.dumps(DEFAULT_MATCH_LOGIC),
             TRANSITIVITY=json.dumps(CLUSTER_CONFIG["transitivity"]),
         )
     else:

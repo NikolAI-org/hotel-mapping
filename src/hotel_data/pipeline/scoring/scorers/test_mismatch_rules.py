@@ -1,12 +1,6 @@
-from hotel_data.pipeline.scoring.scorers.mismatch_rules import (
-    _address_unit_match_score,
-    _type_match_score,
-    _unit_match_score,
-)
 import sys
 import types
 import unittest
-
 
 # mismatch_rules imports pyspark at module import time; provide minimal stubs.
 if "pyspark" not in sys.modules:
@@ -37,6 +31,13 @@ if not hasattr(types_mod, "FloatType"):
         pass
 
     types_mod.FloatType = _FloatType
+
+
+from hotel_data.pipeline.scoring.scorers.mismatch_rules import (
+    _address_unit_match_score,
+    _type_match_score,
+    _unit_match_score,
+)
 
 
 class TestTypeMatchScore(unittest.TestCase):
@@ -249,6 +250,16 @@ class TestAddressUnitMatchScore(unittest.TestCase):
         addr_a = "495/3, phase- 2, chardhi rd"
         addr_b = "plot no.5, laxmi nagar, near garden estate building, mumbai, mumbai"
         self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.0)
+
+    def test_seven_digit_numeric_token_is_now_treated_as_unit_evidence(self):
+        addr_a = "plot no 3873896th floor pvr house mumbai maharashtra india 400009"
+        addr_b = (
+            "narshi natha street 6th floor pvr house katha bazar narshi natha street "
+            "masjid bander west mumbai india 400009"
+        )
+        self.assertEqual(
+            _address_unit_match_score(addr_a, addr_b, "400009", "400009"), 0.0
+        )
 
 
 class TestUnitMatchScore(unittest.TestCase):

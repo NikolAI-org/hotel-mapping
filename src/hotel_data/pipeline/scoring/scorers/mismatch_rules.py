@@ -255,7 +255,7 @@ def _address_unit_match_score(
 
     # Capture house/building/unit numbers, including ordinal-style tokens like "4rd".
     # Postal codes are removed explicitly using dedicated postal columns.
-    num_pattern = r"\b(\d{1,6})(?:st|nd|rd|th)?\b"
+    num_pattern = r"\b(\d+)(?:st|nd|rd|th)?\b"
     nums_a = set(re.findall(num_pattern, addr_a.lower()))
     nums_b = set(re.findall(num_pattern, addr_b.lower()))
 
