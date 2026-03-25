@@ -1,33 +1,33 @@
 # hotel_pair_scorer_processor.py
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+
+from hotel_data.config.scoring_config import ScoringConstants
 from hotel_data.pipeline.preprocessor.core.base_challenge_processor import (
     BaseChallengeProcessor,
 )
 from hotel_data.pipeline.preprocessor.utils.address_utils import token_sort_score
 from hotel_data.pipeline.preprocessor.utils.geo_utils import haversine
 from hotel_data.pipeline.preprocessor.utils.name_utils import (
-    enhanced_name_scorer,
-    name_residual_udf,
-    bigram_jaccard,
+    CONTAINMENT_ALGO,
     # get_numeric_penalty,
     JACCARD_ALGO,
     LCS_ALGO,
     LEVENSHTEIN_ALGO,
-    CONTAINMENT_ALGO,
+    bigram_jaccard,
+    enhanced_name_scorer,
+    name_residual_udf,
 )
-from hotel_data.config.scoring_config import ScoringConstants
 from hotel_data.pipeline.preprocessor.utils.phone_number_utils import (
-    normalize_phone_expr,
     arrays_overlap_check,
+    normalize_phone_expr,
 )
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
-
 from hotel_data.pipeline.scoring.blockers.geohash_blocker import GeoHashBlocker
 from hotel_data.pipeline.scoring.scorers.mismatch_rules import (
-    unit_match_udf,
-    type_match_udf,
     address_unit_match_udf,
+    type_match_udf,
+    unit_match_udf,
 )
 from hotel_data.pipeline.scoring.scorers.overall_pair_scorer import (
     build_overall_pair_score_expr,
@@ -139,15 +139,10 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             ),
         )
 
-        # ── Blocking step 1: Name blocker (cheapest — pure string, no UDF overhead) ──
-        # Run before haversine so the expensive geo UDF only processes name-plausible pairs.
-        bigram_jaccard_udf = F.udf(bigram_jaccard, "float")
-        pairs = pairs.filter(bigram_jaccard_udf(F.col("name_i"), F.col("name_j")) > 0.4)
-
         # ── Blocking step 2: Geo distance filter ──
         haversine_udf = F.udf(haversine, "double")
 
-        pairs_with_distance = pairs.withColumn(
+        pairs = pairs.withColumn(
             "geo_distance_km",
             haversine_udf(
                 F.col("geoCode_lat_i").cast("double"),
@@ -156,12 +151,11 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
                 F.col("geoCode_long_j").cast("double"),
             ),
         )
+        pairs = pairs.filter(F.col("geo_distance_km") <= 2)
 
-        pairs_filtered = pairs_with_distance.filter(F.col("geo_distance_km") <= 0.5)
-
+        # ── Blocking step 1: Name blocker (cheapest — pure string, no UDF overhead) ──
         name_udf = F.udf(enhanced_name_scorer, "float")
-
-        containment = pairs_filtered.withColumn(
+        pairs = pairs.withColumn(
             "name_score_containment",
             name_udf(
                 F.col("name_i"), F.col("name_j"), F.lit(CONTAINMENT_ALGO), F.lit(False)
@@ -176,8 +170,15 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             ),
         )
 
+        bigram_jaccard_udf = F.udf(bigram_jaccard, "float")
+        pairs = pairs.filter(
+            (bigram_jaccard_udf(F.col("name_i"), F.col("name_j")) > 0.3)
+            | (F.col("name_score_containment") > 0.3)
+            | (F.col("normalized_name_score_containment") > 0.3)
+        )
+
         jaccard_lcs_levenshtein = (
-            containment.withColumn(
+            pairs.withColumn(
                 "name_score_jaccard",
                 name_udf(
                     F.col("name_i"),

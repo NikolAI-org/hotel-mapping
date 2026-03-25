@@ -116,10 +116,17 @@ scoring:
         threshold: 0.5
         comparator: gte
 
+  # When enabled, any pair that scores exactly 0.0 (hard-excluded by a veto
+  # signal such as supplier_score or a null data gap) is lifted to this value
+  # instead.  0.74999 keeps the pair just below the 0.75 match threshold so it
+  # is never auto-merged, but appears at the top of the manual-review queue.
+  # Set to null or remove this key to keep the raw 0.0.
+  zero_score_replacement: 0.74999
+
 clustering:
   algorithm: clique
   # Options could be labelpropagation, unionfind, clique
-  transitivity: False
+  transitivity: True
 
 streaming:
   enabled: false
