@@ -5,11 +5,11 @@ from pyspark.sql.types import StringType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
-class LowercaseProcessor(BaseProcessor):
+class LowercaseProcessor(BaseProcessor[DataFrame]):
     def __init__(self, exclude_fields: list[str]):
         self.exclude_fields = exclude_fields
 
-    def process(self, df: DataFrame) -> DataFrame:
+    def process(self, df: DataFrame, prefix: str = "") -> DataFrame:
         # for f in self.fields:
         #     df = df.withColumn(f, lower(col(f)))
         for field in df.schema.fields:

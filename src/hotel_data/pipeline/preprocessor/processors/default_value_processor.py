@@ -1,12 +1,13 @@
 # address_combiner_processor.py
 from pyspark.sql import DataFrame
+from pyspark.sql.column import Column as SparkColumn
 from pyspark.sql import functions as F
 from pyspark.sql.functions import concat_ws, regexp_replace, col
 from pyspark.sql.types import StringType, NumericType, BooleanType, TimestampType, DateType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
-class DefaultValueProcessor(BaseProcessor):
+class DefaultValueProcessor(BaseProcessor[DataFrame]):
     def __init__(self, critical_fields=None, type_defaults=None):
         """
         critical_fields: list of field names to skip null replacement.
@@ -29,7 +30,7 @@ class DefaultValueProcessor(BaseProcessor):
             DateType: F.current_date()
         }
 
-    def process(self, df):
+    def process(self, df, prefix: str = ""):
         for field in df.schema.fields:
             col_name = field.name
 
@@ -47,7 +48,7 @@ class DefaultValueProcessor(BaseProcessor):
                     break
 
             if default is not None:
-                if isinstance(default, F.Column):
+                if isinstance(default, SparkColumn):
                     df = df.withColumn(
                         col_name,
                         F.when(F.col(col_name).isNull(), default).otherwise(F.col(col_name))
@@ -59,3 +60,4 @@ class DefaultValueProcessor(BaseProcessor):
                          .otherwise(F.col(col_name))
                     )
         return df
+    

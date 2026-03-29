@@ -1,98 +1,137 @@
-from pyspark.sql import SparkSession, DataFrame
-from delta.tables import DeltaTable
+from __future__ import annotations
+
 import os
+from typing import Any, Optional, cast
+
+from delta.tables import DeltaTable
+from pyspark.sql import SparkSession, DataFrame
+from pyspark.errors import AnalysisException
 
 
 class DeltaTableManager:
     """
-    Delta Table Manager for both OSS Spark and Unity Catalog.
-    Provides table creation, read, write, and merge capabilities.
+    Delta Table Manager for a production-like setup.
+
+    - Tables are registered in a catalog/schema (Hive-style in OSS Spark).
+    - Data is always stored in Delta format on object storage (MinIO/S3).
+    - Code can use table *names* in SQL, but everything is still backed by paths.
     """
 
     def __init__(
-        self, spark: SparkSession, catalog_name: str, schema_name: str, base_path: str
-    ):
+        self,
+        spark: SparkSession,
+        catalog_name: str,
+        schema_name: str,
+        base_path: str,
+    ) -> None:
         self.spark = spark
+        # e.g. "spark_catalog" in UC world, logical in OSS
         self.catalog_name = catalog_name
-        self.schema_name = schema_name
-        self.base_path = base_path
-        self.use_catalog = True  # Assume Unity Catalog initially
+        self.schema_name = schema_name    # e.g. "bronze"
+        self.base_path = base_path.rstrip("/")  # e.g. "s3a://hotel-lake/delta"
+        self.use_catalog = True  # we will probe UC, then fall back to OSS
 
         self._ensure_catalog_and_schema()
 
-    # ------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Internal helpers
-    # ------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
-    def _ensure_catalog_and_schema(self):
-        """Ensure catalog and schema exist, compatible with Unity Catalog and OSS Spark."""
+    def _ensure_catalog_and_schema(self) -> None:
+        """
+        Ensure catalog+schema exist.
+
+        - If Unity Catalog is available, create catalog+schema.
+        - Otherwise, create a Hive/DB-style database with name = schema_name.
+
+        In local OSS Spark, this will typically land in the Hive metastore
+        configured via DERBY_HOME / MySQL / Postgres.
+        """
         print(
-            f"🧭 Ensuring catalog '{self.catalog_name}' and schema '{self.schema_name}' exist..."
-        )
+            f"🧭 Ensuring catalog '{self.catalog_name}' and schema '{self.schema_name}' exist...")
 
         try:
-            # Try Unity Catalog first
+            # Try Unity Catalog first (Databricks-like behavior)
             self.spark.sql(f"CREATE CATALOG IF NOT EXISTS {self.catalog_name}")
             self.spark.sql(
                 f"CREATE SCHEMA IF NOT EXISTS {self.catalog_name}.{self.schema_name}"
             )
             self.use_catalog = True
-            print(f"✅ Using Unity Catalog: {self.catalog_name}.{self.schema_name}")
+            print(
+                f"✅ Using Unity Catalog: {self.catalog_name}.{self.schema_name}")
         except Exception as e:
             msg = str(e)
             if "PARSE_SYNTAX_ERROR" in msg or "REQUIRES_SINGLE_PART_NAMESPACE" in msg:
                 print(
-                    f"⚙️ Unity Catalog not available. Falling back to OSS Spark (Hive/Database mode)."
-                )
-
-                # Fallback to Hive/DB
+                    "⚙️ Unity Catalog not available. Falling back to OSS Spark (Hive/Database mode).")
                 try:
-                    self.spark.sql("CREATE DATABASE IF NOT EXISTS default")
-                    self.spark.sql(f"CREATE DATABASE IF NOT EXISTS {self.schema_name}")
+                    # Classic Hive DB (single catalog: spark_catalog)
+                    self.spark.sql(
+                        f"CREATE DATABASE IF NOT EXISTS {self.schema_name}")
                     self.use_catalog = False
-                    print(f"✅ OSS schema '{self.schema_name}' ensured.")
-                except Exception as hive_e:
-                    print(f"⚠️ Could not persist schema '{self.schema_name}': {hive_e}")
                     print(
-                        "   -> Consider enabling Hive support for persistent catalogs."
-                    )
+                        f"✅ OSS schema/database '{self.schema_name}' ensured.")
+                except Exception as hive_e:
+                    # In a real prod setup this would be a hard failure with alerts
+                    print(
+                        f"⚠️ Could not persist schema '{self.schema_name}': {hive_e}")
+                    print("   -> Check Hive metastore configuration.")
                     self.use_catalog = False
             else:
-                raise e
+                # Unexpected failure -> don't silently swallow
+                raise
 
     def _namespace(self) -> str:
-        """Return the namespace for SQL queries."""
-        return (
-            f"{self.catalog_name}.{self.schema_name}"
-            if self.use_catalog
-            else self.schema_name
-        )
+        """
+        Namespace used in SQL (for SHOW TABLES, CREATE TABLE, etc.).
+
+        - With catalog:   catalog.schema
+        - Without:        schema
+        """
+        if self.use_catalog:
+            return f"{self.catalog_name}.{self.schema_name}"
+        return self.schema_name
 
     def _get_table_identifier(self, table_name: str) -> str:
-        """Fully qualified table name."""
-        return (
-            f"{self.catalog_name}.{self.schema_name}.{table_name}"
-            if self.use_catalog
-            else f"{self.schema_name}.{table_name}"
-        )
+        """
+        Fully qualified table name.
+
+        - With catalog:   catalog.schema.table
+        - Without:        schema.table
+        """
+        if self.use_catalog:
+            return f"{self.catalog_name}.{self.schema_name}.{table_name}"
+        return f"{self.schema_name}.{table_name}"
 
     def _get_table_path(self, table_name: str) -> str:
-        """Physical path to store Delta table."""
+        """
+        Physical storage location for this Delta table.
+        Example: s3a://bucket/delta/bronze/hotels
+        """
         return os.path.join(self.base_path, self.schema_name, table_name)
 
     def _table_exists(self, table_name: str) -> bool:
-        """Check if table exists in the current namespace."""
-        df = self.spark.sql(f"SHOW TABLES IN {self._namespace()}")
-        return any(row.tableName == table_name for row in df.collect())
+        path = self._get_table_path(table_name)
+        try:
+            return DeltaTable.isDeltaTable(self.spark, path)
+        except Exception as e:
+            print(f"⚠️ _table_exists: Delta check failed for {path}: {e}")
+            return False
 
-    # ------------------------------------------------------------------------
-    # Table operations
-    # ------------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+    # Public table operations
+    # ----------------------------------------------------------------------
 
-    def create_table(self, table_name: str, df: DataFrame = None, comment: str = ""):
+    def create_table(
+            self,
+            table_name: str,
+            df: Optional[DataFrame] = None,
+            comment: str = "",
+    ) -> None:
         """
-        Create Delta table if it doesn't exist.
-        If df is provided, writes initial data; otherwise creates empty table.
+        Create a Delta table if it doesn't exist.
+        - Writes an initial Delta log at the physical path (schema from df).
+        - Registers the table in the catalog pointing to that path.
         """
         fq_name = self._get_table_identifier(table_name)
         path = self._get_table_path(table_name)
@@ -100,67 +139,123 @@ class DeltaTableManager:
         if self._table_exists(table_name):
             print(f"✅ Table '{fq_name}' already exists.")
             return
-        print(f"Writing to path {path}")
-        if df is not None and df.columns:
-            df.write.format("delta").mode("overwrite").save(path)
-            print(f"📦 Written initial data to {path}")
+
+        print(f"📦 Creating Delta table '{fq_name}' at {path}")
+
+        # Write directly without coalescing — coalesce triggers a full shuffle
+        # that spills large datasets to disk and runs out of space.
+        # Delta's own OPTIMIZE command can compact files afterwards if needed.
+        if df is not None and len(df.columns) > 0:
+            initial_df = df
         else:
-            # Write empty DataFrame with schema to avoid empty schema errors
-            df = (
-                df if df is not None else self.spark.createDataFrame([], "id STRING")
-            )  # default column
-            df.write.format("delta").mode("overwrite").save(path)
-            print(f"📦 Created empty table at {path}")
+            initial_df = self.spark.createDataFrame([], "id STRING")
 
-        self.spark.sql(
-            f"""
-            CREATE TABLE IF NOT EXISTS {fq_name}
-            USING DELTA
-            LOCATION '{path}'
-            COMMENT '{comment}'
+        # Write initial data to physically create the Delta log
+        initial_df.write.format("delta").mode(
+            "overwrite").option("mergeSchema", "true").save(path)
+
+        # Register in catalog
+        try:
+            self.spark.sql(
+                f"""
+                CREATE TABLE IF NOT EXISTS {fq_name}
+                USING DELTA
+                LOCATION '{path}'
+                COMMENT '{comment}'
+                """
+            )
+            print(f"✅ Table '{fq_name}' registered in catalog.")
+        except Exception as e:
+            print(
+                f"⚠️ Could not register '{fq_name}' in catalog: {e}\n"
+                f"   -> Data is still available at {path}."
+            )
+
+    def write_table(
+            self,
+            table_name: str,
+            df: DataFrame,
+            mode: str = "append",
+            merge_schema: str = "true",
+            overwrite_schema: str = "true",
+    ) -> None:
         """
-        )
-        print(f"✅ Table '{fq_name}' created at {path}")
-
-    def read_table(self, table_name: str) -> DataFrame:
-        """Read Delta table into a DataFrame."""
-        path = self._get_table_path(table_name)
-        print(f"------- Reading from path: {path}")
-
-        df = self.spark.read.format("delta").load(path)
-        print(f"------- Rows: {df.count()}")
-        return df
-
-    def write_table(self, table_name: str, df: DataFrame, mode: str = "append"):
-        """
-        Write data into Delta table.
-        Supports append/overwrite with schema evolution.
+        Write data into the Delta table.
         """
         fq_name = self._get_table_identifier(table_name)
         path = self._get_table_path(table_name)
 
+        # 1. If table is new, create_table handles the write. Stop execution to prevent double-writing.
         if not self._table_exists(table_name):
             self.create_table(table_name, df=df)
+            print(
+                f"✅ Data written to '{fq_name}' successfully during creation.")
+            return
+
+            # 2. If table exists, optimize the incoming batch before writing
+        if df is not None and len(df.columns) > 0:
+            total_rows = df.count()
+            optimal_partitions = max(1, total_rows // 10000)
+            print(
+                f"Optimizing append/overwrite into {optimal_partitions} files...")
+            df = df.coalesce(optimal_partitions)
 
         print(
-            f"📝 Writing data to '{fq_name}' Path: {path} (mode={mode}, mergeSchema=true)..."
+            f"📝 Writing data to '{fq_name}' "
+            f"(path={path}, mode={mode}, mergeSchema={merge_schema}, overwriteSchema={overwrite_schema})..."
         )
-        df.write.format("delta").mode(mode).option("mergeSchema", "true").save(path)
-        # df.write.format("delta").mode(mode).option("mergeSchema", "true").saveAsTable(fq_name)
+
+        df.write.format("delta") \
+            .mode(mode) \
+            .option("mergeSchema", merge_schema) \
+            .option("overwriteSchema", overwrite_schema) \
+            .save(path)
+
         print(f"✅ Data written to '{fq_name}' successfully.")
 
-    def merge_table(self, table_name: str, df: DataFrame, key_columns: list[str]):
+    def read_table(self, table_name: str) -> DataFrame:
+        fq_name = self._get_table_identifier(table_name)
+        path = self._get_table_path(table_name)
+
+        # Try catalog (prod-style)
+        try:
+            print(f"📖 Reading '{fq_name}' from catalog...")
+            return self.spark.table(fq_name)
+        except Exception as e:
+            print(f"⚠️ Catalog read failed for '{fq_name}': {e}")
+            print(f"   -> Falling back to Delta path: {path}")
+
+        # Fallback: direct path read
+        return self.spark.read.format("delta").load(path)
+
+    def merge_table(self, table_name: str, df: DataFrame, key_columns: list[str]) -> None:
         """
         Merge new data into Delta table using the given key columns.
         """
         fq_name = self._get_table_identifier(table_name)
         path = self._get_table_path(table_name)
 
+        # Allow new columns from source DataFrames to evolve target schema during merge.
+        self.spark.conf.set(
+            "spark.databricks.delta.schema.autoMerge.enabled", "true")
+
         if not self._table_exists(table_name):
+            # Table is brand-new: create_table writes df as the initial snapshot.
+            # Skip the merge entirely — merging df against itself doubles all disk I/O.
             self.create_table(table_name, df=df)
+            print(f"✅ Initial load complete for '{fq_name}'. Skipping merge.")
+            return
+
+        # Low-overhead merge hints: push-down broadcast for small sources and
+        # avoid re-sorting the target file list unnecessarily.
+        self.spark.conf.set(
+            "spark.databricks.delta.merge.optimizeInsertOnlyMerge.enabled", "true")
+        self.spark.conf.set(
+            "spark.databricks.delta.merge.repartitionBeforeWrite.enabled", "true")
 
         delta_table = DeltaTable.forPath(self.spark, path)
-        condition = " AND ".join([f"target.{k} = source.{k}" for k in key_columns])
+        condition = " AND ".join(
+            [f"target.{k} = source.{k}" for k in key_columns])
 
         print(f"🔄 Merging into '{fq_name}' on keys {key_columns}...")
         delta_table.alias("target").merge(
@@ -168,28 +263,25 @@ class DeltaTableManager:
         ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
         print(f"✅ Merge completed for '{fq_name}'.")
 
-    def delete_data(self, table_name: str, condition: str):
+    def delete_data(self, table_name: str, condition: str) -> None:
         """
         Delete records from a Delta table based on a condition.
-        Example:
-            manager.delete_data("hotels", "providerId = 'Hobse'")
         """
-        path = self._get_table_path(table_name)
         fq_name = self._get_table_identifier(table_name)
+        path = self._get_table_path(table_name)
 
         if not self._table_exists(table_name):
             print(f"⚠️ Table '{fq_name}' does not exist. Skipping delete.")
             return
 
-        print(f"🧹 Deleting data from '{fq_name}' where {condition} ...")
+        print(f"🧹 Deleting from '{fq_name}' where {condition} ...")
         delta_table = DeltaTable.forPath(self.spark, path)
         delta_table.delete(condition)
-        print(f"✅ Data deleted from '{fq_name}' successfully.")
+        print(f"✅ Data deleted from '{fq_name}'.")
 
-    def drop_table(self, table_name: str, delete_data: bool = True):
+    def drop_table(self, table_name: str, delete_data: bool = True) -> None:
         """
-        Drop the Delta table metadata and optionally delete the underlying data files.
-        Works for both local and S3-backed Delta locations.
+        Drop table metadata (catalog) and optionally underlying data.
         """
         fq_name = self._get_table_identifier(table_name)
         path = self._get_table_path(table_name)
@@ -206,47 +298,34 @@ class DeltaTableManager:
         except Exception as e:
             print(f"⚠️ Could not drop from catalog: {e}")
 
-        if delete_data:
-            try:
-                # Get the Hadoop FileSystem object
-                hadoop_conf = self.spark._jsc.hadoopConfiguration()
-                fs = self.spark._jvm.org.apache.hadoop.fs.FileSystem.get(
-                    self.spark._jvm.java.net.URI(path), hadoop_conf
-                )
-                # Delete the path recursively
-                fs.delete(self.spark._jvm.org.apache.hadoop.fs.Path(path), True)
-                print(f"🗑️ Deleted underlying data at {path}")
-            except Exception as e:
-                print(f"⚠️ Failed to delete data path {path}: {e}")
+        if not delete_data:
+            return
 
-    # ------------------------------------------------------------------------
-    # Utilities: List catalogs, schemas, and tables
-    # ------------------------------------------------------------------------
+        # Delete physical data via Hadoop FS
+        jsc = getattr(self.spark, "_jsc", None)
+        jvm = getattr(self.spark, "_jvm", None)
+        if jsc is None or jvm is None:
+            print("⚠️ JVM/JSC not available; skipping data deletion.")
+            return
 
-    def list_catalogs(self):
+        jsc = cast(Any, jsc)
+        jvm = cast(Any, jvm)
+
         try:
-            return self.spark.sql("SHOW CATALOGS")
-        except Exception:
-            return self.spark.sql("SELECT 'spark_catalog' AS catalog")
-
-    def list_schemas(self, catalog: str = None):
-        try:
-            cat = (
-                catalog
-                if catalog
-                else (self.catalog_name if self.use_catalog else None)
-            )
-            if cat:
-                return self.spark.sql(f"SHOW SCHEMAS IN {cat}")
-            return self.spark.sql("SHOW DATABASES")
-        except Exception:
-            return None
-
-    def list_tables(self, schema: str = None):
-        ns = schema if schema else self._namespace()
-        try:
-            print(f"SHOW TABLES IN spark_catalog.{ns}")
-            return self.spark.sql(f"SHOW TABLES IN {ns}")
+            hadoop_conf = jsc.hadoopConfiguration()
+            uri = jvm.java.net.URI(path)
+            fs = jvm.org.apache.hadoop.fs.FileSystem.get(uri, hadoop_conf)
+            hadoop_path = jvm.org.apache.hadoop.fs.Path(path)
+            deleted = fs.delete(hadoop_path, True)
+            print(f"🗑️ Deleted underlying data at {path}: {deleted}")
         except Exception as e:
-            print(f"Error: {e}")
-            return None
+            print(f"⚠️ Failed to delete data path {path}: {e}")
+
+    # Convenience for debugging in local
+    def list_tables(self) -> None:
+        ns = self._namespace()
+        try:
+            print(f"📋 SHOW TABLES IN {ns}")
+            self.spark.sql(f"SHOW TABLES IN {ns}").show(truncate=False)
+        except Exception as e:
+            print(f"⚠️ list_tables failed for {ns}: {e}")

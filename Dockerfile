@@ -1,37 +1,47 @@
-FROM python:3.10-slim
+FROM --platform=linux/arm64 apache/airflow:2.8.0-python3.11
 
-# Install JDK 21
+USER root
+
+# Install system dependencies including Java
 RUN apt-get update && \
-    apt-get install -y openjdk-21-jdk && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    build-essential \
+    libsasl2-dev \
+    libsasl2-modules \
+    wget \
+    procps \
+    openjdk-17-jdk-headless \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-ENV PATH="$JAVA_HOME/bin:$PATH"
+# Set Java environment variables
+#ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+ENV PATH=$PATH:$JAVA_HOME/bin
 
-# -------------------------
-# Create directory for preloaded jars
-# -------------------------
-# RUN mkdir -p /opt/spark-jars
+# Spark will be copied from spark-master at runtime
+# Note: We use pip-installed PySpark (not /opt/spark/python) to ensure version consistency
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 
-# Copy all required jars into the image
-# Place your downloaded jars in local folder `jars/` before building
-# COPY spark-jars/ /opt/spark-jars/
+USER airflow
 
-# Add jars to Spark classpath (picked up by Spark Operator)
-# ENV SPARK_CLASSPATH=/opt/spark-jars/*
+# Install Python packages with matching versions
+#RUN pip install --no-cache-dir \
+#    apache-airflow-providers-apache-spark==4.6.0 \
+#    pyspark==3.5.3 \
+#    delta-spark==3.1.0 \
+#    boto3==1.34.32 \
+#    botocore==1.34.32 \
+#    minio==7.2.3 \
+#    pandas==2.1.4 \
+#    pyarrow==14.0.2
 
-# Set working directory
-WORKDIR /app
+# Copy requirements and install
+COPY requirements.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt && \
+    pip install --force-reinstall "celery==5.3.6"
 
-# Install Python dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-# Copy source code
-COPY src/ /app/src/
-
-# PYTHONPATH for Python modules
-ENV PYTHONPATH=/app/src
-
-ENTRYPOINT ["python", "src/hotel_data/pipeline/preprocessor/preprocessing_pipeline.py"]
+USER airflow

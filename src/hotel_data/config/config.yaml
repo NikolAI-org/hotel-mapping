@@ -1,0 +1,139 @@
+# config.yaml - COMPLETE CONFIGURATION FILE
+
+storage:
+  minio_endpoint: "http://minio:9000"
+  minio_access_key: "minioadmin"
+  minio_secret_key: "minioadmin"
+  minio_bucket: "hotel-data"
+  delta_path: "s3a://delta-lake"
+
+scoring:
+  match_logic:
+    operator: AND
+    rules:
+      - operator: OR
+        rules:
+          - signal: name_score_jaccard
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_lcs
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_sbert
+            threshold: 0.9
+            comparator: gte
+          - signal: name_score_levenshtein
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_jaccard
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_lcs
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_levenshtein
+            threshold: 0.95
+            comparator: gte
+          - signal: normalized_name_score_sbert
+            threshold: 0.95
+            comparator: gte
+          - signal: average_name_score
+            threshold: 0.8
+            comparator: gte
+          - signal: average_normalized_name_score
+            threshold: 0.9
+            comparator: gte
+          - operator: AND
+            rules:
+              - signal: normalized_name_score_containment
+                threshold: 1
+                comparator: gte
+              - signal: name_score_sbert
+                threshold: 0.75
+                comparator: gte
+              - signal: geo_distance_km
+                threshold: 0.2
+                comparator: lte
+          - operator: AND
+            rules:
+              - signal: normalized_name_score_containment
+                threshold: 1
+                comparator: gte
+              - signal: name_score_sbert
+                threshold: 0.7
+                comparator: gte
+              - signal: geo_distance_km
+                threshold: 0.1
+                comparator: lte
+          - operator: AND
+            rules:
+              - signal: name_score_containment
+                threshold: 0.95
+                comparator: gte
+              - signal: normalized_name_score_containment
+                threshold: 0.95
+                comparator: gte
+              - signal: star_ratings_score
+                threshold: 0.8
+                comparator: gte
+              - signal: geo_distance_km
+                threshold: 0.2
+                comparator: lte
+      - operator: OR
+        rules:
+          - signal: address_line1_score
+            threshold: 0.5
+            comparator: gte
+          - signal: address_sbert_score
+            threshold: 0.5
+            comparator: gte
+          - signal: geo_distance_km
+            threshold: 0.2
+            comparator: lte
+      - signal: property_type_score
+        threshold: 0.5
+        comparator: gte
+      - signal: name_unit_score
+        threshold: 0.5
+        comparator: gte
+      - operator: OR
+        rules:
+        - signal: address_unit_score
+          threshold: 0.5
+          comparator: gte
+        - operator: AND
+          rules:
+          - signal: address_unit_score
+            threshold: 0.25
+            comparator: gte
+          - signal: geo_distance_km
+            threshold: 0.1
+            comparator: lte
+      - signal: supplier_score
+        threshold: 0.0
+        comparator: lte
+      - signal: name_residual_score
+        threshold: 0.5
+        comparator: gte
+
+clustering:
+  algorithm: clique
+  # Options could be labelpropagation, unionfind, clique
+  transitivity: False
+
+streaming:
+  enabled: false
+  checkpoint_path: "s3a://delta-lake/checkpoints"
+  trigger_interval: "5 minutes"
+  max_batch_size: 10000
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  output_file: null
+
+delta_lake:
+  catalog_name: spark_catalog
+  schema_name: bronze
+  base_path: s3a://delta-lake
+

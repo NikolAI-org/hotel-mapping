@@ -8,7 +8,7 @@ from hotel_data.pipeline.preprocessor.core.base_reader import BaseReader
 import os
 
 class JSONStreamReader(BaseReader):
-    def __init__(self, folder_path: str, schema: StructType = None):
+    def __init__(self, folder_path: str, schema: StructType):
         if os.path.exists(folder_path):
             self.folder_path = os.path.abspath(folder_path)
         else:
