@@ -147,7 +147,6 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
       - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
-      - hf-model-cache:/tmp/hf_cache
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -329,10 +328,6 @@ services:
       - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/data
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jars:/opt/spark-jars
       - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
-      # Named volume keeps the SBERT model cached across container restarts.
-      # Using a named volume (not a host bind-mount) avoids macOS→Lima→Docker
-      # 9p filesystem permission mapping issues with UID 999.
-      - hf-model-cache:/tmp/hf_cache
     networks:
       - delta-lake-network
 
@@ -398,8 +393,6 @@ volumes:
   spark-tmp:
   spark-work:
   spark-binaries:
-  hf-model-cache:
-
 
 networks:
   delta-lake-network:

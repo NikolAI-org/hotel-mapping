@@ -1,10 +1,11 @@
-import os
 import fcntl
-import pandas as pd
+import os
 from typing import Iterator
+
+import pandas as pd
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import pandas_udf, col, struct
-from pyspark.sql.types import ArrayType, FloatType, StructType, StructField
+from pyspark.sql.functions import col, pandas_udf, struct
+from pyspark.sql.types import ArrayType, FloatType, StructField, StructType
 
 from hotel_data.pipeline.preprocessor.core.base_processor import BaseProcessor
 
@@ -28,7 +29,11 @@ embedding_schema = StructType(
 def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.DataFrame]:
     # Reduce thread contention
     os.environ["OMP_NUM_THREADS"] = "1"
-    os.environ["HF_HOME"] = "/tmp/hf_cache"
+    # Point both variables to the same path where the model was baked into the
+    # Spark image at build time (Dockerfile.spark). Using /tmp/hf_cache causes
+    # "model not found" on a fresh clone because the named volume hf-model-cache
+    # starts empty and the worker has no internet access inside the cluster.
+    os.environ["HF_HOME"] = "/opt/spark/hf_cache"
     os.environ["SENTENCE_TRANSFORMERS_HOME"] = "/opt/spark/hf_cache"
 
     # Acquire an exclusive file lock before dlopen-ing libtorch_cpu.so.
@@ -45,8 +50,8 @@ def compute_all_embeddings(iterator: Iterator[pd.DataFrame]) -> Iterator[pd.Data
     try:
         with open(_TORCH_LOAD_LOCK, "w") as _lock:
             fcntl.flock(_lock, fcntl.LOCK_EX)
-            from sentence_transformers import SentenceTransformer
             import torch
+            from sentence_transformers import SentenceTransformer
 
             # Singleton Model
             model = SentenceTransformer("all-MiniLM-L6-v2")
