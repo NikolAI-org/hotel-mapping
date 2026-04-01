@@ -26,5 +26,5 @@ class UIDProcessor(BaseProcessor[DataFrame]):
 
         return df.withColumn(
             self.output_col,
-            F.sha2(F.concat(F.col("providerId"), clean_name, clean_addr), 256),
+            F.sha2(F.concat(F.col("providerHotelId"), clean_name, clean_addr), 256),
         )

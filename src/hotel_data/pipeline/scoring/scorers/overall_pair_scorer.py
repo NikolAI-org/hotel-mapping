@@ -18,6 +18,14 @@ For every leaf condition in config.yaml the sub-score is anchored as:
     value = threshold   → sub_score = 0.75  (just passing)
     value = 2*threshold → sub_score = 0.0   (too far)
 
+Zero-score replacement
+----------------------
+When ``scoring.zero_score_replacement`` is set in config.yaml, any pair whose
+overall_pair_score computes to exactly 0.0 is lifted to that value instead.
+The recommended value is 0.74999 — just below the 0.75 match threshold — so
+the pair is never auto-merged but rises to the top of the manual-review queue.
+Set the key to null or remove it to keep raw 0.0 scores.
+
 Compound rules are aggregated as:
   OR  → max(sub_scores)   — best contributing signal wins
   AND → mean(sub_scores) when all sub-scores ≥ 0.75 (all groups pass their
@@ -37,7 +45,6 @@ import yaml
 from pyspark.sql import Column
 from pyspark.sql import functions as F
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Config loading
 # ─────────────────────────────────────────────────────────────────────────────
@@ -50,11 +57,11 @@ def _find_config_path() -> str:
     return os.path.join(os.path.dirname(hotel_data.__file__), "config", "config.yaml")
 
 
-def _load_match_logic(config_path: Optional[str] = None) -> dict:
+def _load_scoring_config(config_path: Optional[str] = None) -> dict:
     path = config_path or _find_config_path()
     with open(path, "r") as fh:
         cfg = yaml.safe_load(fh)
-    return cfg["scoring"]["match_logic"]
+    return cfg["scoring"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -73,47 +80,44 @@ def _signal_score_expr(signal: str, threshold: float, comparator: str) -> Column
     if comparator == "gte":
         # Higher is better. Best = 1.0, pass = threshold, worst = 0.
         if t <= 0.0:
-            # Any positive value is fine; threshold is trivially met.
-            return F.lit(1.0).cast("float")
-
-        if t >= 1.0:
+            score_expr = F.lit(1.0)
+        elif t >= 1.0:
             # Threshold is already the maximum possible; score is linear 0→0.75.
-            return F.greatest(F.lit(0.0), F.lit(0.75) * c / F.lit(t)).cast("float")
-
-        # two-segment linear:
-        #   [0, t]  →  [0.00, 0.75]   slope = 0.75 / t
-        #   [t, 1]  →  [0.75, 1.00]   slope = 0.25 / (1 - t)
-        return F.least(
-            F.lit(1.0),
-            F.when(
-                c >= t,
-                F.lit(0.75) + F.lit(0.25) * (c - F.lit(t)) / F.lit(1.0 - t),
-            ).otherwise(
-                F.greatest(F.lit(0.0), F.lit(0.75) * c / F.lit(t)),
-            ),
-        ).cast("float")
-
+            score_expr = F.greatest(F.lit(0.0), F.lit(0.75) * c / F.lit(t))
+        else:
+            # two-segment linear:
+            #   [0, t]  →  [0.00, 0.75]   slope = 0.75 / t
+            #   [t, 1]  →  [0.75, 1.00]   slope = 0.25 / (1 - t)
+            score_expr = F.least(
+                F.lit(1.0),
+                F.when(
+                    c >= t,
+                    F.lit(0.75) + F.lit(0.25) * (c - F.lit(t)) / F.lit(1.0 - t),
+                ).otherwise(
+                    F.greatest(F.lit(0.0), F.lit(0.75) * c / F.lit(t)),
+                ),
+            )
     else:  # lte — lower is better (e.g. geo_distance_km)
         if t <= 0.0:
             # No gradient threshold to score against — use inverted value: 1 - c.
             # Lower value → higher contribution (e.g. supplier_score=0 → 1.0, =1 → 0.0).
             # Clamped to [0, 1] to guard against values outside that range.
-            return F.greatest(F.lit(0.0), F.least(F.lit(1.0), F.lit(1.0) - c)).cast(
-                "float"
+            score_expr = F.greatest(F.lit(0.0), F.least(F.lit(1.0), F.lit(1.0) - c))
+        else:
+            # two-segment linear:
+            #   [0,  t]  →  [1.00, 0.75]  (the closer to 0 the better)
+            #   [t, 2t]  →  [0.75, 0.00]  (past threshold, decays to 0 at 2*t)
+            score_expr = F.greatest(
+                F.lit(0.0),
+                F.when(
+                    c <= t,
+                    F.lit(0.75) + F.lit(0.25) * (F.lit(t) - c) / F.lit(t),
+                ).otherwise(
+                    F.lit(0.75) * (F.lit(1.0) - (c - F.lit(t)) / F.lit(t)),
+                ),
             )
 
-        # two-segment linear:
-        #   [0,  t]  →  [1.00, 0.75]  (the closer to 0 the better)
-        #   [t, 2t]  →  [0.75, 0.00]  (past threshold, decays to 0 at 2*t)
-        return F.greatest(
-            F.lit(0.0),
-            F.when(
-                c <= t,
-                F.lit(0.75) + F.lit(0.25) * (F.lit(t) - c) / F.lit(t),
-            ).otherwise(
-                F.lit(0.75) * (F.lit(1.0) - (c - F.lit(t)) / F.lit(t)),
-            ),
-        ).cast("float")
+    return score_expr.cast("float")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +181,23 @@ def build_overall_pair_score_expr(config_path: Optional[str] = None) -> Column:
     """
     global _CACHED_EXPR
     if _CACHED_EXPR is None:
-        match_logic = _load_match_logic(config_path)
-        _CACHED_EXPR = _rule_to_expr(match_logic)
+        scoring_cfg = _load_scoring_config(config_path)
+        expr = _rule_to_expr(scoring_cfg["match_logic"])
+        # Apply zero_score_replacement if configured: pairs that score exactly
+        # 0.0 are lifted to just below the match threshold so they surface in
+        # manual-review queues rather than being invisible at absolute zero.
+        replacement = scoring_cfg.get("zero_score_replacement")
+        if replacement is not None:
+            expr = (
+                F.when(expr == F.lit(0.0), F.lit(float(replacement)))
+                .otherwise(expr)
+                .cast("float")
+            )
+        _CACHED_EXPR = expr
     return _CACHED_EXPR
+
+
+def invalidate_cache() -> None:
+    """Force rebuild of the cached expression on next call (e.g. after config change)."""
+    global _CACHED_EXPR
+    _CACHED_EXPR = None
