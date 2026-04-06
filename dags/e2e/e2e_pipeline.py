@@ -175,7 +175,12 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         param_key = None
         param_value = None
         
-        transitivity_str = "true" if CLUSTER_CONFIG["transitivity"] else "false"
+        val = CLUSTER_CONFIG["transitivity"]
+
+        if isinstance(val, str):
+            val = val.lower() == "true"
+
+        transitivity_str = "true" if val else "false"
         
         # Merge the base_env with the clustering-specific variables
         spark_env = dict(

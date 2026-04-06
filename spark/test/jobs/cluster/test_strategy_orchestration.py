@@ -19,16 +19,36 @@ def test_orphaned_singletons_caught_by_strategy(spark):
     mock_router = MagicMock()
     mock_validator = MagicMock()
     
+    # --- NEW: Mock return values as real DataFrames to support .count() and .show() ---
+    # 1. Scorer returns a DF with composite_score
+    scored_df = pairs_df.withColumn("composite_score", F.lit(0.9))
+    mock_scorer.process.return_value = scored_df
+    
+    # 2. Match Evaluator returns a DF with is_matched
+    evaluated_df = scored_df.withColumn("is_matched", F.lit(True))
+    mock_evaluator.return_value = evaluated_df
+    
+    # 3. Veto Engine returns a DF with is_vetoed and veto_reason (Essential for the fix!)
+    vetoed_df = evaluated_df.withColumn("is_vetoed", F.lit(False)) \
+                            .withColumn("veto_reason", F.lit(None).cast("string")) \
+                            .withColumn("name_i", F.lit("Hotel 1")) \
+                            .withColumn("name_j", F.lit("Hotel 2")) \
+                            .withColumn("geo_distance_km", F.lit(0.01)) \
+                            .withColumn("name_score_jaccard", F.lit(0.9))
+    mock_veto.apply.return_value = vetoed_df
+    # ---------------------------------------------------------------------------------
+
     # Simulate the Router returning a decision ONLY for h1. h2 is missing from uid_i!
-    # Providing the strict schema prevents the "CANNOT_DETERMINE_TYPE" PySpark error
     mock_router.route.return_value = spark.createDataFrame([
         ("h1", "h2", "ATTACH_TO_CANONICAL", 0.95, None)
     ], schema="uid_i string, uid_j string, routing_decision string, composite_score double, veto_reason string")
     
+    # Mock validator to pass through the router decisions with an assigned canonical ID
     mock_validator.validate.return_value = mock_router.route.return_value.withColumn("assigned_canonical_id", F.col("uid_j"))
     
     real_id_gen = CanonicalIdGenerator()
 
+    # Initialize Strategy
     strategy = NonTransitiveStrategy(
         mock_veto, mock_router, real_id_gen, mock_scorer, mock_evaluator, mock_validator
     )
