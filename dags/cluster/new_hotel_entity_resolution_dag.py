@@ -28,6 +28,8 @@ DEFAULT_CONFIG = {
     "threshold_high": 0.85,
     "threshold_low": 0.80,
     "provider_name": "hobse",  # Default provider
+    "conflict_margin": 0.05,
+    "required_providers": ["ean", "grnconnect"]
 }
 DEFAULT_MATCH_LOGIC = {
     "operator": "AND",
@@ -114,7 +116,8 @@ DEFAULT_MATCH_LOGIC = {
     ]
 }
 
-TRANSITIVITY = True
+TRANSITIVITY = False
+REQUIRED_PROVIDERS = ["ean", "grnconnect"]
 
 def run_clustering_step(**context):
     params = context["params"]
@@ -174,12 +177,18 @@ def run_clustering_step(**context):
 
     # Passing dynamic field names and weights as env vars
     env = os.environ.copy()
+    current_python_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"/opt/airflow:{current_python_path}"
+    
     env["WEIGHTS"] = json.dumps(params["weights"])
     env["THRESHOLD_HIGH"] = str(params["threshold_high"])
     env["THRESHOLD_LOW"] = str(params["threshold_low"])
     env["PROVIDER_NAME"] = str(params["provider_name"])
     env["MATCH_LOGIC"] = json.dumps(params.get("match_logic", DEFAULT_MATCH_LOGIC))
     env["TRANSITIVITY"] = json.dumps(params.get("transitivity", TRANSITIVITY))
+    env["CONFLICT_MARGIN"] = str(params.get("conflict_margin", 0.05))
+    env["REQUIRED_PROVIDERS"] = json.dumps(params.get("required_providers", REQUIRED_PROVIDERS))
+    
     result = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
     # Always print output so it appears in the logs regardless of success/fail
@@ -207,6 +216,8 @@ with DAG(
         ),  # Added Param
         "match_logic": Param(DEFAULT_MATCH_LOGIC, type="object"),
         "transitivity": Param(TRANSITIVITY, type="boolean"),
+        "conflict_margin": Param(DEFAULT_CONFIG["conflict_margin"], type="number"),
+        "required_providers": Param(REQUIRED_PROVIDERS, type="array")
     },
     render_template_as_native_obj=True,
 ) as dag:

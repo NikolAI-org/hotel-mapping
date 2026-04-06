@@ -32,3 +32,4 @@ torch
 fuzzywuzzy
 python-Levenshtein
 celery==5.3.6
+pytest==9.0.2

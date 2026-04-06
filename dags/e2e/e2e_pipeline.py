@@ -8,10 +8,11 @@ import json
 import select
 
 # 1. Define your exact sequence here! EAN must go first to build the base.
-SUPPLIERS = ["ean", "bookingcom",
+SUPPLIERS = [
+    # "ean", "bookingcom",
              #"ratehawk",
-             # "grnconnect",
-             # "hobse",
+             "grnconnect",
+             "hobse",
              ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = 'india'
@@ -38,6 +39,7 @@ CLUSTER_CONFIG = {
     "threshold_high": 0.85,
     "threshold_low": 0.80,
     "transitivity": True,
+    "conflict_margin": 0.05,
 }
 
 DEFAULT_MATCH_LOGIC = {
