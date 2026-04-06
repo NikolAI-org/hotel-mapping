@@ -49,7 +49,27 @@ class NonTransitiveStrategy(ClusteringStrategy):
         # 1. Base Scoring & Logic
         scored_pairs = self.scorer.process(pairs_df)
         boolean_evaluated_pairs = self.match_evaluator(scored_pairs)
+        
         vetoed_pairs = self.veto_engine.apply(boolean_evaluated_pairs)
+        # Cache the dataframe temporarily so the .show() doesn't recalculate the whole DAG
+        vetoed_pairs.cache() 
+        
+        veto_count = vetoed_pairs.filter(F.col("is_vetoed") == True).count()
+        print(f"🛑 VETO ENGINE LOG: Caught {veto_count} vetoed pairs!")
+        
+        if veto_count > 0:
+            print("🛑 VETO ENGINE LOG: Sample of records destroyed by the Veto rules:")
+            vetoed_pairs.filter(F.col("is_vetoed") == True).select(
+                "uid_i", 
+                "uid_j", 
+                "name_i", 
+                "name_j", 
+                "geo_distance_km", 
+                "name_score_jaccard",
+                "veto_reason",
+                "composite_score" # You will see this is exactly 0.0
+            ).show(10, truncate=False)
+        # --------------------------------------
         routed_decisions = self.router.route(vetoed_pairs)
 
         # --- FIX: Map uid_j to Canonical ID ---

@@ -13,6 +13,22 @@ class VetoRule(ABC):
 
     @abstractmethod
     def get_condition(self) -> Column: pass
+    
+class DynamicVetoRule(VetoRule):
+    """A Veto Rule driven entirely by a JSON configuration DAG."""
+    def __init__(self, rule_name: str, logic_config: dict):
+        self._rule_name = rule_name
+        self.logic_config = logic_config
+        # Reuse your existing evaluator engine!
+        self.evaluator = MatchLogicEvaluator(logic_config)
+
+    @property
+    def rule_name(self) -> str: 
+        return self._rule_name
+    
+    def get_condition(self) -> Column:
+        # Compiles the JSON into a PySpark boolean expression
+        return self.evaluator.build_match_expression(self.logic_config)    
 
 # --- CONCRETE RULES (Add more as needed) ---
 class DualBrandVeto(VetoRule):
@@ -49,9 +65,16 @@ class MatchLogicEvaluator:
             return functools.reduce(lambda x, y: x & y if op == "AND" else x | y, child_exprs)
         
         elif "signal" in rule_node:
-            signal_col = F.coalesce(F.col(rule_node["signal"]), F.lit(0.0))
-            threshold = float(rule_node["threshold"])
             comp = rule_node["comparator"].lower()
+            raw_col = F.col(rule_node["signal"])
+            
+            # NEW: Handle missing data checks BEFORE coalescing to 0.0
+            if comp == "isnull": return raw_col.isNull()
+            if comp == "isnotnull": return raw_col.isNotNull()
+
+            # Existing numerical comparisons
+            signal_col = F.coalesce(raw_col, F.lit(0.0))
+            threshold = float(rule_node.get("threshold", 0.0))
             
             if comp == "gte": return signal_col >= threshold
             if comp == "lte": return signal_col <= threshold

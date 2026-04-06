@@ -38,8 +38,9 @@ CLUSTER_CONFIG = {
     },
     "threshold_high": 0.85,
     "threshold_low": 0.80,
-    "transitivity": True,
+    "transitivity": False,
     "conflict_margin": 0.05,
+    "required_providers": ["ean", "grnconnect"]
 }
 
 DEFAULT_MATCH_LOGIC = {
@@ -110,6 +111,30 @@ DEFAULT_MATCH_LOGIC = {
     ],
 }
 
+VETO_RULES_CONFIG = [
+    {
+        "veto_name": "VETO_DUAL_BRAND_TRAP",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "geo_distance_km", "comparator": "lt", "threshold": 0.05},
+                {"signal": "average_normalized_name_score", "comparator": "lt", "threshold": 0.4}
+            ]
+        }
+    },
+    {
+        "veto_name": "VETO_MISSING_GEO_TIEBREAKER",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "average_normalized_name_score", "comparator": "gt", "threshold": 0.9},
+                {"signal": "geo_distance_km", "comparator": "isnull"},
+                {"signal": "address_line1_score", "comparator": "isnull"}
+            ]
+        }
+    }
+]
+
 default_args = {
     'owner': 'data-engineer',
     'depends_on_past': False,
@@ -124,8 +149,15 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     """
     print(f"Running Spark job: {job_type} for {supplier}")
 
+    # --- FIX: Ensure PYTHONPATH is set so Spark can find your custom modules ---
+    base_env = os.environ.copy()
+    current_python_path = base_env.get("PYTHONPATH", "")
+    base_env["PYTHONPATH"] = f"/opt/airflow:{current_python_path}"
+    # --------------------------------------------------------------------------
+
     # Determine script, job name, and parameters based on job_type
-    spark_env = None
+    spark_env = base_env # Default to the new base_env for ingestion and scoring
+    
     if job_type == "ingestion":
         script_path = '/opt/airflow/spark/jobs/ingestion/run_ingestion_job.py'
         job_name = f'ingest-{supplier.lower()}'
@@ -142,14 +174,21 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         job_name = f'cluster-{supplier.lower()}'
         param_key = None
         param_value = None
+        
+        transitivity_str = "true" if CLUSTER_CONFIG["transitivity"] else "false"
+        
+        # Merge the base_env with the clustering-specific variables
         spark_env = dict(
-            os.environ,
+            base_env,
             PROVIDER_NAME=supplier,
             WEIGHTS=json.dumps(CLUSTER_CONFIG["weights"]),
             THRESHOLD_HIGH=str(CLUSTER_CONFIG["threshold_high"]),
             THRESHOLD_LOW=str(CLUSTER_CONFIG["threshold_low"]),
             MATCH_LOGIC=json.dumps(DEFAULT_MATCH_LOGIC),
-            TRANSITIVITY=json.dumps(CLUSTER_CONFIG["transitivity"]),
+            TRANSITIVITY=transitivity_str,
+            CONFLICT_MARGIN=str(CLUSTER_CONFIG["conflict_margin"]),
+            REQUIRED_PROVIDERS=json.dumps(CLUSTER_CONFIG["required_providers"]),
+            DYNAMIC_VETO_RULES=json.dumps(VETO_RULES_CONFIG),
         )
     else:
         raise ValueError(f"Unsupported job_type: {job_type}")
@@ -160,11 +199,15 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         '--master', 'spark://spark-master:7077',
         '--deploy-mode', 'client',
         '--name', job_name,
-        '--executor-memory', '6g',  # Give the worker nodes 2GB of RAM
-        '--executor-cores', '5',  # STRICTLY 1 core so it only loads 1 PyTorch model!
+        '--executor-memory', '6g',  
+        '--executor-cores', '5',  
         '--driver-memory', '3g',
         '--packages',
         'io.delta:delta-spark_2.12:3.3.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262',
+        
+        '--conf', 'spark.network.timeout=800s',
+        '--conf', 'spark.executor.heartbeatInterval=60s',
+        
         '--conf', 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension',
         '--conf', 'spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog',
         '--conf', 'spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem',
@@ -181,11 +224,10 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
 
     print(f"Executing command: {' '.join(spark_submit_cmd)}")
 
-    # Run in a polled loop so this PythonOperator keeps emitting heartbeats/logs
-    # and avoids zombie detection for long-running spark-submit tasks.
+    # Ensure spark_env is always passed
     proc = subprocess.Popen(
         spark_submit_cmd,
-        env=spark_env,
+        env=spark_env, 
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

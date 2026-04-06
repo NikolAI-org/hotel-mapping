@@ -119,6 +119,30 @@ DEFAULT_MATCH_LOGIC = {
 TRANSITIVITY = False
 REQUIRED_PROVIDERS = ["ean", "grnconnect"]
 
+VETO_RULES_CONFIG = [
+    {
+        "veto_name": "VETO_DUAL_BRAND_TRAP",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "geo_distance_km", "comparator": "lt", "threshold": 0.05},
+                {"signal": "average_normalized_name_score", "comparator": "lt", "threshold": 0.4}
+            ]
+        }
+    },
+    {
+        "veto_name": "VETO_MISSING_GEO_TIEBREAKER",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "average_normalized_name_score", "comparator": "gt", "threshold": 0.9},
+                {"signal": "geo_distance_km", "comparator": "isnull"},
+                {"signal": "address_line1_score", "comparator": "isnull"}
+            ]
+        }
+    }
+]
+
 def run_clustering_step(**context):
     params = context["params"]
 
@@ -188,7 +212,7 @@ def run_clustering_step(**context):
     env["TRANSITIVITY"] = json.dumps(params.get("transitivity", TRANSITIVITY))
     env["CONFLICT_MARGIN"] = str(params.get("conflict_margin", 0.05))
     env["REQUIRED_PROVIDERS"] = json.dumps(params.get("required_providers", REQUIRED_PROVIDERS))
-    
+    env["DYNAMIC_VETO_RULES"] = json.dumps(VETO_RULES_CONFIG)
     result = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
     # Always print output so it appears in the logs regardless of success/fail

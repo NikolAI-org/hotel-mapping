@@ -3,7 +3,7 @@ import json
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from hotel_data.delta.delta_table_manager import DeltaTableManager
-from spark.jobs.cluster.engine import CanonicalIdGenerator, ClusterCohesionValidator, DualBrandVeto, MatchLogicEvaluator, MissingGeoTiebreakerVeto, RoutingDecisionEngine, VetoEngine
+from spark.jobs.cluster.engine import CanonicalIdGenerator, ClusterCohesionValidator, DualBrandVeto, DynamicVetoRule, MatchLogicEvaluator, MissingGeoTiebreakerVeto, RoutingDecisionEngine, VetoEngine
 from spark.jobs.cluster.entity_resolution_pipeline import EntityResolutionPipeline
 from spark.jobs.cluster.pair_scorer import PairScorer
 from spark.jobs.cluster.strategies import TransitiveStrategy, NonTransitiveStrategy
@@ -32,6 +32,20 @@ def main():
     match_logic_config = json.loads(os.getenv('MATCH_LOGIC', '{}'))
     match_evaluator = MatchLogicEvaluator(match_logic_config)
     required_providers = json.loads(os.getenv('REQUIRED_PROVIDERS', '["ean"]'))
+    
+    # Veto rules to break the tie breaker
+    dynamic_veto_json = json.loads(os.getenv('DYNAMIC_VETO_RULES', '[]'))
+    veto_rules = []
+    for veto_cfg in dynamic_veto_json:
+        rule = DynamicVetoRule(
+            rule_name=veto_cfg["veto_name"], 
+            logic_config=veto_cfg["logic"]
+        )
+        veto_rules.append(rule)
+
+    # Inject the dynamically compiled rules into the engine
+    veto_engine = VetoEngine(veto_rules)
+    # -----------------------------------------------------
 
     # --- STRATEGY FACTORY ---
     if transitivity:
@@ -48,7 +62,7 @@ def main():
             't_high': float(os.getenv('THRESHOLD_HIGH', 0.85)),
         }
         scorer = PairScorer(config['weights'], config['t_high'], 0.80)
-        veto_engine = VetoEngine([DualBrandVeto(), MissingGeoTiebreakerVeto()])
+        # veto_engine = VetoEngine([DualBrandVeto(), MissingGeoTiebreakerVeto()])
         margin = float(os.getenv('CONFLICT_MARGIN', 0.05))
         router = RoutingDecisionEngine(match_threshold=config['t_high'], conflict_margin=margin)
         cohesion_validator = ClusterCohesionValidator(required_providers=required_providers)
