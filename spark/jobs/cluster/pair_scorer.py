@@ -13,9 +13,7 @@ class PairScorer:
 
         # Startup diagnostics to make config/schema mismatches obvious in Airflow logs.
         print(f"🔎 PairScorer weights: {self.weights}")
-        print(
-            f"🔎 PairScorer available columns ({len(pairs_df.columns)}): {pairs_df.columns}"
-        )
+        print(f"🔎 PairScorer available columns ({len(pairs_df.columns)}): {pairs_df.columns}")
 
         missing = [k for k in self.weights.keys() if k not in available_cols]
         if missing:
@@ -28,9 +26,7 @@ class PairScorer:
         resolved_weight_sum = 0.0
 
         for key, weight in self.weights.items():
-            resolved_terms.append(
-                F.coalesce(F.col(key).cast("double"), F.lit(0.0)) * F.lit(float(weight))
-            )
+            resolved_terms.append(F.coalesce(F.col(key).cast("double"), F.lit(0.0)) * F.lit(float(weight)))
             resolved_weight_sum += float(weight)
 
         if not resolved_terms or resolved_weight_sum <= 0:
@@ -44,13 +40,10 @@ class PairScorer:
             composite_expr = composite_expr + term
 
         denom = resolved_weight_sum if resolved_weight_sum > 0 else 1.0
-        scored_df = pairs_df.withColumn(
-            "composite_score", (composite_expr / F.lit(denom)).cast("double")
-        )
+        scored_df = pairs_df.withColumn("composite_score", (composite_expr / F.lit(denom)).cast("double"))
 
-        return scored_df.withColumn(
-            "classification",
+        return scored_df.withColumn("classification", 
             F.when(F.col("composite_score") >= self.t_high, "MATCHED")
-            .when(F.col("composite_score") >= self.t_low, "MANUAL_REVIEW")
-            .otherwise("UNMATCHED"),
+             .when(F.col("composite_score") >= self.t_low, "MANUAL_REVIEW")
+             .otherwise("UNMATCHED")
         )

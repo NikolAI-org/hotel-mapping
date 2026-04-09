@@ -43,7 +43,101 @@ CLUSTER_CONFIG = {
     "threshold_high": 0.85,
     "threshold_low": 0.80,
     "transitivity": True,
+    "conflict_margin": 0.05,
+    "required_providers": ["ean", "grnconnect"]
 }
+
+DEFAULT_MATCH_LOGIC = {
+    "operator": "AND",
+    "rules": [
+        {"signal": "geo_distance_km", "threshold": 0.5, "comparator": "lte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_jaccard", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_lcs", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_levenshtein", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+                {
+                    "operator": "AND",
+                    "rules": [
+                        {"signal": "name_score_sbert", "threshold": 0.75, "comparator": "gte"},
+                        {"signal": "normalized_name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                    ],
+                },
+            ],
+        },
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "address_line1_score", "threshold": 0.2, "comparator": "gte"},
+                {"signal": "address_sbert_score", "threshold": 0.2, "comparator": "gte"},
+            ],
+        },
+        {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"},
+            ],
+        },
+        {"signal": "country_match", "threshold": 0.5, "comparator": "gte"},
+        {
+            "operator": "OR",
+            "rules": [
+                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
+                {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"},
+            ],
+        },
+    ],
+}
+
+VETO_RULES_CONFIG = [
+    {
+        "veto_name": "VETO_DUAL_BRAND_TRAP",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "geo_distance_km", "comparator": "lt", "threshold": 0.05},
+                {"signal": "average_normalized_name_score", "comparator": "lt", "threshold": 0.4}
+            ]
+        }
+    },
+    {
+        "veto_name": "VETO_MISSING_GEO_TIEBREAKER",
+        "logic": {
+            "operator": "AND",
+            "rules": [
+                {"signal": "average_normalized_name_score", "comparator": "gt", "threshold": 0.9},
+                {"signal": "geo_distance_km", "comparator": "isnull"},
+                {"signal": "address_line1_score", "comparator": "isnull"}
+            ]
+        }
+    }
+]
 
 default_args = {
     "owner": "data-engineer",
@@ -83,6 +177,9 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
             THRESHOLD_HIGH=str(CLUSTER_CONFIG["threshold_high"]),
             THRESHOLD_LOW=str(CLUSTER_CONFIG["threshold_low"]),
             TRANSITIVITY=json.dumps(CLUSTER_CONFIG["transitivity"]),
+            CONFLICT_MARGIN=str(CLUSTER_CONFIG["conflict_margin"]),
+            REQUIRED_PROVIDERS=json.dumps(CLUSTER_CONFIG["required_providers"]),
+            DYNAMIC_VETO_RULES=json.dumps(VETO_RULES_CONFIG),
         )
     else:
         raise ValueError(f"Unsupported job_type: {job_type}")
@@ -102,10 +199,10 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
     #   clustering: graph algorithm, moderate memory, no heavy Python deps
     #               4g + 10% overhead = 4.4g → floor(22/4.4)=5 executors, 5 cores active
     if job_type == "ingestion":
-        executor_memory = os.environ.get("SPARK_INGESTION_MEM", "3g")
+        executor_memory = os.environ.get("SPARK_INGESTION_MEM", "4g")
         executor_cores = os.environ.get("SPARK_INGESTION_CORES", "1")
     elif job_type == "scoring":
-        executor_memory = os.environ.get("SPARK_SCORING_MEM", "12g")
+        executor_memory = os.environ.get("SPARK_SCORING_MEM", "4g")
         executor_cores = os.environ.get("SPARK_SCORING_CORES", "1")
     else:  # clustering
         executor_memory = os.environ.get("SPARK_CLUSTERING_MEM", "4g")
