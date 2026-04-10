@@ -115,6 +115,9 @@ scoring:
       - signal: name_residual_score
         threshold: 0.5
         comparator: gte
+      - signal: chain_name_score
+        threshold: 0.5
+        comparator: gte
 
   # When enabled, any pair that scores exactly 0.0 (hard-excluded by a veto
   # signal such as supplier_score or a null data gap) is lifted to this value

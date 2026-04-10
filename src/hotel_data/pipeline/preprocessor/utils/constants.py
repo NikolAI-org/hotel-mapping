@@ -64,8 +64,8 @@ STOP_WORDS = {
     "di",
 }
 
-STRONG_IDENTITY_TERMS = {
-    # Brand Identifiers
+BRAND_IDENTITY_TERMS = {
+    # Core brand differentiators — one-sided presence means a different brand
     "crown",
     "inn",
     "express",
@@ -74,7 +74,11 @@ STRONG_IDENTITY_TERMS = {
     "palace",
     "boutique",
     "collection",
-    # Directional/Location Modifiers
+    "residence",
+}
+
+LOCATION_IDENTITY_TERMS = {
+    # Directional/location modifiers — one-sided presence is a softer mismatch
     "north",
     "south",
     "east",
@@ -83,7 +87,7 @@ STRONG_IDENTITY_TERMS = {
     "airport",
     "city",
     "town",
-    # Specific Descriptors
+    # Specific descriptors
     "green",
     "blue",
     "sea",
@@ -91,3 +95,6 @@ STRONG_IDENTITY_TERMS = {
     "valley",
     "hill",
 }
+
+# Union kept for any code that only needs the full set (backward-compat)
+STRONG_IDENTITY_TERMS = BRAND_IDENTITY_TERMS | LOCATION_IDENTITY_TERMS

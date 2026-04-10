@@ -18,6 +18,7 @@ from hotel_data.pipeline.preprocessor.utils.phone_number_utils import (
     arrays_overlap_check,
 )
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
+from hotel_data.pipeline.preprocessor.utils.chain_name_utils import chain_name_score
 
 from pyspark.sql import functions as F
 
@@ -403,8 +404,14 @@ class CandidateScorer(BaseProcessor[DataFrame]):
             ratings_udf(F.col("starRating_i"), F.col("starRating_j")),
         )
 
+        chain_name_udf = F.udf(chain_name_score, "float")
+        pairs_with_chain_score = pairs_with_ratings_score.withColumn(
+            "chain_name_score",
+            chain_name_udf(F.col("chainName_i"), F.col("chainName_j")),
+        )
+
         # print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
-        # pairs_with_ratings_score.show(2, truncate=False)
+        # pairs_with_chain_score.show(2, truncate=False)
 
         cols_to_remove = [
             "norm_phones_i",
@@ -412,5 +419,5 @@ class CandidateScorer(BaseProcessor[DataFrame]):
             "norm_faxes_i",
             "norm_faxes_j",
         ]
-        required_df = pairs_with_ratings_score.drop(*cols_to_remove)
+        required_df = pairs_with_chain_score.drop(*cols_to_remove)
         return required_df

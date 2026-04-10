@@ -139,5 +139,63 @@ class TestNameResidualScore(unittest.TestCase):
         self.assertEqual(_name_residual_score(a, b, 0.5), 0.0)
 
 
+class TestNameResidualScoreFix1BrandVsLocation(unittest.TestCase):
+    """
+    Fix 1: Brand terms on one side are a VETO (0.0), not just a penalty (0.9).
+    Location terms on one side remain a penalty (0.9).
+    """
+
+    def test_x_by_y_brand_pattern_vetoes(self):
+        # "residence inn by marriott miami airport" vs "miami airport marriott"
+        # "residence" and "inn" are brand identity terms unique to name_a → VETO
+        a = "residence inn by marriott miami airport"
+        b = "miami airport marriott"
+        self.assertEqual(_name_residual_score(a, b, 0.6), 0.0)
+
+    def test_express_brand_variant_vetoes(self):
+        # "Holiday Inn Express" vs "Holiday Inn" — express is a brand differentiator
+        a = "holiday inn express"
+        b = "holiday inn"
+        self.assertEqual(_name_residual_score(a, b, 0.67), 0.0)
+
+    def test_residence_brand_one_sided_vetoes(self):
+        # "Marriott Residence Inn" vs "Marriott Hotel" — residence is brand identity
+        a = "marriott residence"
+        b = "marriott hotel"
+        self.assertEqual(_name_residual_score(a, b, 0.5), 0.0)
+
+    def test_location_term_one_sided_is_still_penalty_not_veto(self):
+        # "Hotel Airport" vs "Hotel" — airport is a location modifier, not a brand
+        a = "hotel airport"
+        b = "hotel"
+        # jaccard < 0.5 so residual short-circuits to 1.0 (safe default)
+        # Use a higher jaccard to trigger residual analysis
+        self.assertEqual(_name_residual_score(a, b, 0.6), 0.9)
+
+    def test_conflicting_location_terms_veto(self):
+        # "Grand Hotel North" vs "Grand Hotel South" — conflicting directions → VETO
+        a = "grand hotel north"
+        b = "grand hotel south"
+        self.assertEqual(_name_residual_score(a, b, 0.67), 0.0)
+
+    def test_same_brand_term_both_sides_is_safe(self):
+        # "Crown Plaza Mumbai" vs "Crown Plaza Delhi" — crown in both (intersection)
+        # After fix: no brand in residuals, no location in residuals → 1.0
+        a = "crown plaza mumbai"
+        b = "crown plaza"
+        # "mumbai" lands in residual_a but isn't a brand/location term → safe
+        self.assertEqual(_name_residual_score(a, b, 0.67), 1.0)
+
+    def test_low_jaccard_skips_residual_analysis(self):
+        # Score < 0.5 → residual check is skipped entirely → 1.0
+        self.assertEqual(_name_residual_score("residence inn", "marriott", 0.3), 1.0)
+
+    def test_brand_conflict_both_sides_vetoes(self):
+        # "Grand Palace" vs "Grand Inn" — palace vs inn both brand terms → VETO
+        a = "grand palace"
+        b = "grand inn"
+        self.assertEqual(_name_residual_score(a, b, 0.5), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

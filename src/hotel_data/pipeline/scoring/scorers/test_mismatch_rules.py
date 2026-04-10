@@ -262,6 +262,55 @@ class TestAddressUnitMatchScore(unittest.TestCase):
         )
 
 
+class TestAddressUnitMatchScoreFix2Alphanumeric(unittest.TestCase):
+    """
+    Fix 2: Alphanumeric house numbers (1800b, 1775a) are now captured and treated as
+    distinct tokens from plain integers — "1850b" ≠ "1850".
+    """
+
+    def test_alphanumeric_vs_different_number_is_hard_conflict(self):
+        # 1800b ≠ 1247 → disjoint → 0.0 (was 0.9 before fix because 1800b wasn't captured)
+        addr_a = "1800b some street, colaba"
+        addr_b = "1247 other avenue, colaba"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.0)
+
+    def test_alphanumeric_vs_same_digits_only_is_hard_conflict(self):
+        # 1850b ≠ 1850 → distinct buildings on same block → 0.0
+        addr_a = "1850b marine drive"
+        addr_b = "1850 marine drive"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.0)
+
+    def test_alphanumeric_vs_different_number_with_letter_is_hard_conflict(self):
+        # 1775a ≠ 3665 → disjoint → 0.0
+        addr_a = "1775a linking road, bandra"
+        addr_b = "3665 linking road, bandra"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.0)
+
+    def test_same_alphanumeric_tokens_match(self):
+        # 1800b == 1800b → exact match → 1.0
+        addr_a = "1800b marine lines"
+        addr_b = "1800b marine lines, mumbai"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 1.0)
+
+    def test_ordinal_still_normalised_correctly(self):
+        # "4rd floor" and "flat 4" should still match as before (ordinal stripped → "4")
+        addr_a = "4rd floor, alpha house, colaba"
+        addr_b = "flat 4, beta house, colaba"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 1.0)
+
+    def test_ordinal_vs_different_number_still_conflicts(self):
+        # "4rd floor" vs "flat 7" → "4" ≠ "7" → 0.0
+        addr_a = "4rd floor, alpha house, colaba"
+        addr_b = "flat 7, beta house, colaba"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.0)
+
+    def test_alphanumeric_one_sided_is_ambiguous(self):
+        # "1800b some street" vs "some street" → one-sided → 0.9
+        addr_a = "1800b some street, colaba"
+        addr_b = "some street, colaba"
+        self.assertEqual(_address_unit_match_score(addr_a, addr_b), 0.9)
+
+
 class TestUnitMatchScore(unittest.TestCase):
     def test_no_unit_evidence_is_neutral_match(self):
         self.assertEqual(_unit_match_score("hotel sunrise", "resort sunrise"), 1.0)
@@ -306,6 +355,78 @@ class TestUnitMatchScore(unittest.TestCase):
         name_a = "1 private bedroom ii bath in a modern 2 bhk in powai"
         name_b = "1 private bedroom in a modern 2 bhk in powai"
         self.assertEqual(_unit_match_score(name_a, name_b), 0.85)
+
+
+class TestUnitMatchScoreFix3PluralsAndAbbreviations(unittest.TestCase):
+    """
+    Fix 3a: Plural keyword forms (suites, rooms, towers) no longer capture 's' as a unit.
+    Fix 3b: Shorthand abbreviations bd, ba, br are now recognised as typed inventory.
+    """
+
+    # --- Fix 3a: plural keyword forms ---
+
+    def test_suites_plural_does_not_extract_s_as_unit(self):
+        # "stay together suites" → no unit evidence (keyword "suite" not followed by a unit)
+        # "1bd1ba w bonusrm stay together suites" → bed:1, bath:1
+        # One side has units, the other does not → 0.9 (ambiguous), NOT 0.0
+        name_i = "stay together suites"
+        name_j = "1bd1ba w bonusrm stay together suites"
+        score = _unit_match_score(name_i, name_j)
+        # name_i extracts {} (suites plural gives no unit); name_j extracts {bed:1, bath:1}
+        self.assertEqual(score, 0.9)
+
+    def test_suite_singular_with_unit_still_captured(self):
+        # "suite 3" → unit 3 should still be captured
+        self.assertEqual(_unit_match_score("hotel suite 3", "hotel suite 3"), 1.0)
+        self.assertEqual(_unit_match_score("hotel suite 3", "hotel suite 4"), 0.0)
+
+    def test_rooms_plural_does_not_extract_s_as_unit(self):
+        # "conference rooms" → 's' should not be captured as unit
+        name_a = "hotel with conference rooms"
+        name_b = "hotel conference room 5"
+        # name_a → {} (rooms plural = no unit), name_b → {5} → one-sided → 0.9
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.9)
+
+    def test_towers_plural_does_not_extract_s_as_unit(self):
+        # "east towers" should not extract 's'
+        name_a = "east towers hotel"
+        name_b = "east tower a hotel"
+        # name_a → {} (towers = no unit), name_b → {A} → one-sided → 0.9
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.9)
+
+    # --- Fix 3b: bd / ba / br abbreviations ---
+
+    def test_bd_ba_compact_concatenated_extracted(self):
+        # "1bd1ba" → bed:1, bath:1
+        name_a = "1bd1ba w bonusrm stay together suites"
+        name_b = "2bd2ba w bonusrm stay together suites"
+        # Different counts → hard conflict → 0.0
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.0)
+
+    def test_bd_matches_bedroom(self):
+        # "1bd" and "1 bedroom" should normalise to the same bed:1
+        self.assertEqual(_unit_match_score("1bd apartment", "1 bedroom apartment"), 1.0)
+
+    def test_ba_matches_bath(self):
+        # "2ba" and "2 bath" should normalise to the same bath:2
+        self.assertEqual(_unit_match_score("2ba flat", "2 bath flat"), 1.0)
+
+    def test_bd_ba_same_counts_match(self):
+        # "1bd1ba" → {bed:1, bath:1}; "1 bedroom 1 bath" → {1, bed:1, bath:1}
+        # The spaced form adds an extra untyped "1" via standalone extraction (pre-existing
+        # design: standalone fires on \b1\b before "bedroom"). Compact form is a strict
+        # subset → 0.85 (subset relation).
+        self.assertAlmostEqual(
+            _unit_match_score("1bd1ba stay together", "1 bedroom 1 bath stay together"),
+            0.85,
+            places=6,
+        )
+
+    def test_bd_ba_different_counts_conflict(self):
+        # "2bd2ba" vs "1bd1ba" → {bed:2, bath:2} vs {bed:1, bath:1} → fully disjoint → 0.0
+        name_a = "2bd2ba stay together"
+        name_b = "1bd1ba stay together"
+        self.assertEqual(_unit_match_score(name_a, name_b), 0.0)
 
 
 if __name__ == "__main__":

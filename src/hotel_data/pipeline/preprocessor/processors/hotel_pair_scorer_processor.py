@@ -23,6 +23,7 @@ from hotel_data.pipeline.preprocessor.utils.phone_number_utils import (
     normalize_phone_expr,
 )
 from hotel_data.pipeline.preprocessor.utils.star_ratings_utils import star_rating_score
+from hotel_data.pipeline.preprocessor.utils.chain_name_utils import chain_name_score
 from hotel_data.pipeline.scoring.blockers.geohash_blocker import GeoHashBlocker
 from hotel_data.pipeline.scoring.scorers.mismatch_rules import (
     address_unit_match_udf,
@@ -134,6 +135,8 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             F.col("b.type").alias("type_j"),
             F.col("a.starRating").alias("starRating_i"),
             F.col("b.starRating").alias("starRating_j"),
+            F.col("a.chainName").alias("chainName_i"),
+            F.col("b.chainName").alias("chainName_j"),
             F.array_intersect(F.col("a.geoHash"), F.col("b.geoHash")).alias(
                 "geo_intersection"
             ),
@@ -512,8 +515,14 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             ratings_udf(F.col("starRating_i"), F.col("starRating_j")),
         )
 
+        chain_name_udf = F.udf(chain_name_score, "float")
+        pairs_with_chain_score = pairs_with_ratings_score.withColumn(
+            "chain_name_score",
+            chain_name_udf(F.col("chainName_i"), F.col("chainName_j")),
+        )
+
         # print("👉 Pair within 500 m generation complete. First few neighbour pairs:")
-        # pairs_with_ratings_score.show(20, truncate=False)
+        # pairs_with_chain_score.show(20, truncate=False)
 
         cols_to_remove = [
             "geoCode_lat_i",
@@ -549,8 +558,10 @@ class HotelPairScorerProcessor(BaseChallengeProcessor[DataFrame]):
             "name_preprocessed_j",
             "combined_address_preprocessed_i",
             "combined_address_preprocessed_j",
+            "chainName_i",
+            "chainName_j",
         ]
-        required_df = pairs_with_ratings_score.withColumn(
+        required_df = pairs_with_chain_score.withColumn(
             "overall_pair_score", build_overall_pair_score_expr()
         ).drop(*cols_to_remove)
         return required_df

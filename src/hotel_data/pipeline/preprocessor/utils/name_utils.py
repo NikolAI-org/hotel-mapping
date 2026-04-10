@@ -4,6 +4,8 @@ from hotel_data.pipeline.preprocessor.utils.constants import (
     STOP_WORDS,
     STOP_PHRASES,
     STRONG_IDENTITY_TERMS,
+    BRAND_IDENTITY_TERMS,
+    LOCATION_IDENTITY_TERMS,
 )
 from hotel_data.config.scoring_config import ScoringConstants
 import pyspark.sql.functions as F
@@ -318,17 +320,27 @@ def _name_residual_score(name_a: str, name_b: str, jaccard_score: float) -> floa
     residual_a = set_a - intersection
     residual_b = set_b - intersection
 
-    # 5. Extract only the Strong Terms from the leftovers
-    strong_res_a = residual_a.intersection(STRONG_IDENTITY_TERMS)
-    strong_res_b = residual_b.intersection(STRONG_IDENTITY_TERMS)
+    # 5. Extract brand and location terms from the leftovers separately
+    brand_res_a = residual_a.intersection(BRAND_IDENTITY_TERMS)
+    brand_res_b = residual_b.intersection(BRAND_IDENTITY_TERMS)
+    loc_res_a = residual_a.intersection(LOCATION_IDENTITY_TERMS)
+    loc_res_b = residual_b.intersection(LOCATION_IDENTITY_TERMS)
 
-    # CASE 1: Hard Conflict (e.g., Crown vs Inn)
-    if strong_res_a and strong_res_b and strong_res_a != strong_res_b:
+    # CASE 1: Hard conflict in brand identity (e.g., Crown vs Inn)
+    if brand_res_a and brand_res_b and brand_res_a != brand_res_b:
         return 0.0  # VETO
 
-    # CASE 4: One-Sided Modifier (e.g., South vs [Missing])
-    if (strong_res_a and not strong_res_b) or (strong_res_b and not strong_res_a):
-        return 0.9  # HEAVY PENALTY
+    # CASE 2: Hard conflict in location modifiers (e.g., North vs South)
+    if loc_res_a and loc_res_b and loc_res_a != loc_res_b:
+        return 0.0  # VETO
+
+    # CASE 3: One-sided brand term — different brand identity (e.g., "Residence Inn" vs "Marriott")
+    if (brand_res_a and not brand_res_b) or (brand_res_b and not brand_res_a):
+        return 0.0  # VETO — brand term present on only one side is a hard mismatch
+
+    # CASE 4: One-sided location modifier — possible variant name (e.g., "Airport Hotel" vs "Hotel")
+    if (loc_res_a and not loc_res_b) or (loc_res_b and not loc_res_a):
+        return 0.9  # HEAVY PENALTY — but not a definitive mismatch
 
     # Safe - The leftovers were harmless words (like "near", "building")
     return 1.0

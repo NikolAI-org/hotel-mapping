@@ -11,11 +11,10 @@ from airflow.operators.python import PythonOperator
 # 1. Define your exact sequence here! EAN must go first to build the base.
 SUPPLIERS = [
     "ean",
-    # "hotelbeds",
     "bookingcom",
-    "ratehawk",
-    "grnconnect",
-    "hobse",
+    # "ratehawk",
+    # "grnconnect",
+    # "hobse",
 ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = "india"
@@ -44,7 +43,7 @@ CLUSTER_CONFIG = {
     "threshold_low": 0.80,
     "transitivity": True,
     "conflict_margin": 0.05,
-    "required_providers": ["ean", "grnconnect"]
+    "required_providers": ["ean", "bookingcom"],
 }
 
 DEFAULT_MATCH_LOGIC = {
@@ -56,34 +55,70 @@ DEFAULT_MATCH_LOGIC = {
             "rules": [
                 {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
                 {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
-                {"signal": "name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                {
+                    "signal": "name_score_levenshtein",
+                    "threshold": 0.9,
+                    "comparator": "gte",
+                },
                 {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_jaccard", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
+                        {
+                            "signal": "name_score_jaccard",
+                            "threshold": 0.75,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "normalized_name_score_jaccard",
+                            "threshold": 0.9,
+                            "comparator": "gte",
+                        },
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_lcs", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_lcs", "threshold": 0.9, "comparator": "gte"},
+                        {
+                            "signal": "name_score_lcs",
+                            "threshold": 0.75,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "normalized_name_score_lcs",
+                            "threshold": 0.9,
+                            "comparator": "gte",
+                        },
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_levenshtein", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_levenshtein", "threshold": 0.9, "comparator": "gte"},
+                        {
+                            "signal": "name_score_levenshtein",
+                            "threshold": 0.75,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "normalized_name_score_levenshtein",
+                            "threshold": 0.9,
+                            "comparator": "gte",
+                        },
                     ],
                 },
                 {
                     "operator": "AND",
                     "rules": [
-                        {"signal": "name_score_sbert", "threshold": 0.75, "comparator": "gte"},
-                        {"signal": "normalized_name_score_sbert", "threshold": 0.9, "comparator": "gte"},
+                        {
+                            "signal": "name_score_sbert",
+                            "threshold": 0.75,
+                            "comparator": "gte",
+                        },
+                        {
+                            "signal": "normalized_name_score_sbert",
+                            "threshold": 0.9,
+                            "comparator": "gte",
+                        },
                     ],
                 },
             ],
@@ -91,8 +126,16 @@ DEFAULT_MATCH_LOGIC = {
         {
             "operator": "OR",
             "rules": [
-                {"signal": "address_line1_score", "threshold": 0.2, "comparator": "gte"},
-                {"signal": "address_sbert_score", "threshold": 0.2, "comparator": "gte"},
+                {
+                    "signal": "address_line1_score",
+                    "threshold": 0.2,
+                    "comparator": "gte",
+                },
+                {
+                    "signal": "address_sbert_score",
+                    "threshold": 0.2,
+                    "comparator": "gte",
+                },
             ],
         },
         {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
@@ -122,21 +165,29 @@ VETO_RULES_CONFIG = [
             "operator": "AND",
             "rules": [
                 {"signal": "geo_distance_km", "comparator": "lt", "threshold": 0.05},
-                {"signal": "average_normalized_name_score", "comparator": "lt", "threshold": 0.4}
-            ]
-        }
+                {
+                    "signal": "average_normalized_name_score",
+                    "comparator": "lt",
+                    "threshold": 0.4,
+                },
+            ],
+        },
     },
     {
         "veto_name": "VETO_MISSING_GEO_TIEBREAKER",
         "logic": {
             "operator": "AND",
             "rules": [
-                {"signal": "average_normalized_name_score", "comparator": "gt", "threshold": 0.9},
+                {
+                    "signal": "average_normalized_name_score",
+                    "comparator": "gt",
+                    "threshold": 0.9,
+                },
                 {"signal": "geo_distance_km", "comparator": "isnull"},
-                {"signal": "address_line1_score", "comparator": "isnull"}
-            ]
-        }
-    }
+                {"signal": "address_line1_score", "comparator": "isnull"},
+            ],
+        },
+    },
 ]
 
 default_args = {
@@ -145,6 +196,7 @@ default_args = {
     "start_date": datetime(2024, 1, 1),
     "retries": 0,
 }
+
 
 def run_spark_job_direct(job_type, supplier, **kwargs):
     """

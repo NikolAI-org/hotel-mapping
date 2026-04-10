@@ -4,6 +4,23 @@ from typing import Set
 import pyspark.sql.functions as F
 import pyspark.sql.types as T
 
+# Matches: pure integers ("42"), ordinals ("4th", "3rd"), and alphanumeric house
+# numbers ("1800b", "1775a").  The capture group keeps the full raw token so that
+# "1850b" ≠ "1850" (distinct buildings) while "4th" is post-processed to "4" to
+# align with plain "4" in another address.
+_RAW_HOUSE_NUM_RE = re.compile(r"\b(\d+(?:st|nd|rd|th|[a-z])?)\b")
+_ORDINAL_RE = re.compile(r"^(\d+)(st|nd|rd|th)$")
+
+
+def _extract_house_nums(text: str) -> Set[str]:
+    """Extract house/unit numbers from an address, normalising ordinal suffixes."""
+    nums: Set[str] = set()
+    for raw in _RAW_HOUSE_NUM_RE.findall(text.lower()):
+        m = _ORDINAL_RE.match(raw)
+        # Strip ordinal suffix ("4th" → "4") but keep alpha suffix ("1800b" → "1800b")
+        nums.add(m.group(1) if m else raw)
+    return nums
+
 
 # ==========================================
 # 1. Property Type Match Score
@@ -53,28 +70,37 @@ _ROMAN_TOKEN_RE = re.compile(
 )
 
 # TYPED Inventory
-# Catches: "2 bhk", "ii bath", "1 bedroom", "bed 2", "bath iv"
-# Handles number first OR type first
+# Catches: "2 bhk", "ii bath", "1 bedroom", "bed 2", "bath iv", "1bd", "1ba"
+# Handles number first OR type first; also compact no-space abbreviations.
 # 1A. Value-First Inventory (e.g., "2 bhk", "ii bath") - PRIORITY
 _TYPED_VAL_FIRST_RE = re.compile(
-    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*[-:]?\s*(bhk|beds?|bedrooms?|baths?|bathrooms?)\b"
+    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*[-:]?\s*(bhk|beds?|bedrooms?|baths?|bathrooms?|bd|ba|br)\b"
 )
 
 # 1B. Type-First Inventory (e.g., "bed 2", "bath iv") - FALLBACK
 _TYPED_TYPE_FIRST_RE = re.compile(
-    r"\b(bhk|beds?|bedrooms?|baths?|bathrooms?)\s*[-:]?\s*(\d{1,4}|[ivxlcdm]{1,7})\b"
+    r"\b(bhk|beds?|bedrooms?|baths?|bathrooms?|bd|ba|br)\s*[-:]?\s*(\d{1,4}|[ivxlcdm]{1,7})\b"
+)
+
+# 1C. Compact concatenated abbreviations (e.g., "1bd1ba", "2ba") — no space between
+# successive unit specs so \b would not fire between them. Lookahead allows matching
+# back-to-back tokens like the "1ba" in "1bd1ba".
+_TYPED_COMPACT_ABBREV_RE = re.compile(
+    r"(\d{1,4})(bd|ba|br)(?=\d|\s|$|[^a-z])"
 )
 
 # General Context (UNTYPED)
+# \b is added after the keyword to prevent matching plural forms as units
+# (e.g., "suites" would previously match "suite" and capture "s" as the unit).
 _NAME_UNIT_CONTEXT_RE = re.compile(
-    r"\b(?:phase|ph|block|blk|tower|twr|wing|unit|flat|apt|apartment|suite|room|villa|floor|flr|building|bldg)\s*[-#:]?\s*"
+    r"\b(?:phase|ph|block|blk|tower|twr|wing|unit|flat|apt|apartment|suite|room|villa|floor|flr|building|bldg)\b\s*[-#:]?\s*"
     r"([a-z]|\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b"
 )
 
 # Standalone (UNTYPED)
 _NAME_UNIT_STANDALONE_RE = re.compile(r"\b(\d{1,4}(?:st|nd|rd|th)?|[ivxlcdm]{1,7})\b")
 _NAME_UNIT_COMPACT_RE = re.compile(
-    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*(?:bhk|bed|bedroom|bath|beds|bedrooms|baths|bathrooms)\b"
+    r"\b(\d{1,4}|[ivxlcdm]{1,7})\s*(?:bhk|bed|bedroom|bath|beds|bedrooms|baths|bathrooms|bd|ba|br)\b"
 )
 
 
@@ -121,9 +147,9 @@ def _normalize_unit_token(token: str, allow_articles_as_units: bool = False) -> 
 def _normalize_inventory_type(raw_type: str) -> str:
     """Maps synonymous inventory terms to a single standard type to avoid false mismatch."""
     t = raw_type.lower()
-    if "bath" in t:
+    if "bath" in t or t == "ba":
         return "bath"
-    if t in {"bhk", "bed", "beds", "bedroom", "bedrooms"}:
+    if t in {"bhk", "bed", "beds", "bedroom", "bedrooms", "bd", "br"}:
         return "bed"
     return "unknown"
 
@@ -144,7 +170,7 @@ def _extract_name_units(name: str) -> Set[str]:
             typed_tokens.append(f"{norm_type}:{norm_val}")
             consumed_spans.append(match.span())
 
-    # 1B. Extract Type-First Typed Inventory (Fallback)
+    # 1B. Type-First Typed Inventory (Fallback)
     for match in _TYPED_TYPE_FIRST_RE.finditer(text):
         # Only process if this text wasn't already consumed by Value-First!
         # (This prevents "bedroom ii" from stealing the "ii" from "ii bath")
@@ -160,6 +186,23 @@ def _extract_name_units(name: str) -> Set[str]:
             norm_type = _normalize_inventory_type(typ)
             if norm_val and norm_type != "unknown":
                 typed_tokens.append(f"{norm_type}:{norm_val}")
+                consumed_spans.append(match.span())
+
+    # 1C. Compact concatenated abbreviations (e.g., "1bd1ba" → bed:1, bath:1)
+    # These have no \b between adjacent specs so the spaced patterns above miss them.
+    for match in _TYPED_COMPACT_ABBREV_RE.finditer(text):
+        span = match.span()
+        overlap = any(
+            start <= span[0] < end or start < span[1] <= end
+            for start, end in consumed_spans
+        )
+        if not overlap:
+            val, typ = match.groups()
+            norm_val = _normalize_unit_token(val)
+            norm_type = _normalize_inventory_type(typ)
+            if norm_val and norm_type != "unknown":
+                typed_tokens.append(f"{norm_type}:{norm_val}")
+                consumed_spans.append(span)
 
     # 2. Contextual extraction (Captures letters like "Tower A")
     context_tokens = _NAME_UNIT_CONTEXT_RE.findall(text)
@@ -253,11 +296,12 @@ def _address_unit_match_score(
     if not addr_a or not addr_b:
         return 1.0
 
-    # Capture house/building/unit numbers, including ordinal-style tokens like "4rd".
+    # Capture house/building/unit numbers including alphanumeric tokens (e.g. "1800b").
+    # Ordinal suffixes (st/nd/rd/th) are stripped; alpha suffixes are kept so that
+    # "1850b" and "1850" are treated as distinct tokens.
     # Postal codes are removed explicitly using dedicated postal columns.
-    num_pattern = r"\b(\d+)(?:st|nd|rd|th)?\b"
-    nums_a = set(re.findall(num_pattern, addr_a.lower()))
-    nums_b = set(re.findall(num_pattern, addr_b.lower()))
+    nums_a = _extract_house_nums(addr_a)
+    nums_b = _extract_house_nums(addr_b)
 
     # Remove known postal code numeric components so postal mismatches don't
     # leak into this signal; postal consistency is handled by postal_code_match.
