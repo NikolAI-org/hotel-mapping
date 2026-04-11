@@ -145,6 +145,8 @@ def _rule_to_expr(rule: dict) -> Column:
 
     if operator == "OR":
         # Best contributor wins
+        if len(sub_exprs) == 1:
+            return sub_exprs[0].cast("float")
         return F.greatest(*sub_exprs).cast("float")
 
     # AND — mean when all pass (rewards quality);
