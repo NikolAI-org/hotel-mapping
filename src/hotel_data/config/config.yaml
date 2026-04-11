@@ -13,58 +13,102 @@ scoring:
     rules:
       - operator: OR
         rules:
-          - signal: name_score_jaccard
-            threshold: 0.9
-            comparator: gte
-          - signal: name_score_lcs
-            threshold: 0.9
-            comparator: gte
-          - signal: name_score_sbert
-            threshold: 0.9
-            comparator: gte
-          - signal: name_score_levenshtein
-            threshold: 0.95
-            comparator: gte
-          - signal: normalized_name_score_jaccard
-            threshold: 0.95
-            comparator: gte
-          - signal: normalized_name_score_lcs
-            threshold: 0.95
-            comparator: gte
-          - signal: normalized_name_score_levenshtein
-            threshold: 0.95
-            comparator: gte
-          - signal: normalized_name_score_sbert
-            threshold: 0.95
-            comparator: gte
-          - signal: average_name_score
-            threshold: 0.8
-            comparator: gte
-          - signal: average_normalized_name_score
-            threshold: 0.9
-            comparator: gte
           - operator: AND
             rules:
-              - signal: normalized_name_score_containment
-                threshold: 1
-                comparator: gte
-              - signal: name_score_sbert
-                threshold: 0.75
-                comparator: gte
-              - signal: geo_distance_km
-                threshold: 0.2
-                comparator: lte
+              - operator: OR
+                rules:
+                  - signal: name_score_jaccard
+                    threshold: 0.9
+                    comparator: gte
+                  - signal: name_score_lcs
+                    threshold: 0.9
+                    comparator: gte
+                  - signal: name_score_sbert
+                    threshold: 0.9
+                    comparator: gte
+                  - signal: name_score_levenshtein
+                    threshold: 0.95
+                    comparator: gte
+              - operator: OR
+                rules:
+                  - signal: normalized_name_score_jaccard
+                    threshold: 0.85
+                    comparator: gte
+                  - signal: normalized_name_score_lcs
+                    threshold: 0.85
+                    comparator: gte
+                  - signal: normalized_name_score_levenshtein
+                    threshold: 0.90
+                    comparator: gte
+                  - signal: normalized_name_score_sbert
+                    threshold: 0.85
+                    comparator: gte
           - operator: AND
             rules:
-              - signal: normalized_name_score_containment
-                threshold: 1
+              - operator: OR
+                rules:
+                  - signal: name_score_jaccard
+                    threshold: 0.8
+                    comparator: gte
+                  - signal: name_score_lcs
+                    threshold: 0.8
+                    comparator: gte
+                  - signal: name_score_sbert
+                    threshold: 0.8
+                    comparator: gte
+                  - signal: name_score_levenshtein
+                    threshold: 0.85
+                    comparator: gte
+              - operator: OR
+                rules:
+                  - signal: normalized_name_score_jaccard
+                    threshold: 0.95
+                    comparator: gte
+                  - signal: normalized_name_score_lcs
+                    threshold: 0.95
+                    comparator: gte
+                  - signal: normalized_name_score_levenshtein
+                    threshold: 0.95
+                    comparator: gte
+                  - signal: normalized_name_score_sbert
+                    threshold: 0.95
+                    comparator: gte
+          # - signal: average_name_score
+          #   threshold: 0.8
+          #   comparator: gte
+          # - signal: average_normalized_name_score
+          #   threshold: 0.9
+          #   comparator: gte
+          - operator: AND
+            rules:
+              - signal: average_name_score
+                threshold: 0.8
                 comparator: gte
-              - signal: name_score_sbert
-                threshold: 0.7
+              - signal: average_normalized_name_score
+                threshold: 0.85
                 comparator: gte
-              - signal: geo_distance_km
-                threshold: 0.1
-                comparator: lte
+          # - operator: AND
+          #   rules:
+          #     - signal: normalized_name_score_containment
+          #       threshold: 1
+          #       comparator: gte
+          #     - signal: name_score_sbert
+          #       threshold: 0.75
+          #       comparator: gte
+          #     - signal: geo_distance_km
+          #       threshold: 0.2
+          #       comparator: lte
+          # - operator: AND
+          #   rules:
+          #     - signal: normalized_name_score_containment
+          #       threshold: 1
+          #       comparator: gte
+          #     - signal: name_score_sbert
+          #       threshold: 0.7
+          #       comparator: gte
+          #     - signal: geo_distance_km
+          #       threshold: 0.1
+          #       comparator: lte
           - operator: AND
             rules:
               - signal: name_score_containment
@@ -76,9 +120,9 @@ scoring:
               - signal: star_ratings_score
                 threshold: 0.8
                 comparator: gte
-              - signal: geo_distance_km
-                threshold: 0.2
-                comparator: lte
+              # - signal: geo_distance_km
+              #   threshold: 0.2
+              #   comparator: lte
       - operator: OR
         rules:
           - signal: address_line1_score
@@ -101,14 +145,14 @@ scoring:
         - signal: address_unit_score
           threshold: 0.5
           comparator: gte
-        - operator: AND
-          rules:
-          - signal: address_unit_score
-            threshold: 0.25
-            comparator: gte
-          - signal: geo_distance_km
-            threshold: 0.1
-            comparator: lte
+        # - operator: AND
+        #   rules:
+        #   - signal: address_unit_score
+        #     threshold: 0.25
+        #     comparator: gte
+        #   - signal: geo_distance_km
+        #     threshold: 0.1
+        #     comparator: lte
       - signal: supplier_score
         threshold: 0.0
         comparator: lte
@@ -119,12 +163,14 @@ scoring:
         threshold: 0.5
         comparator: gte
 
-  # When enabled, any pair that scores exactly 0.0 (hard-excluded by a veto
-  # signal such as supplier_score or a null data gap) is lifted to this value
-  # instead.  0.74999 keeps the pair just below the 0.75 match threshold so it
-  # is never auto-merged, but appears at the top of the manual-review queue.
-  # Set to null or remove this key to keep the raw 0.0.
-  zero_score_replacement: 0.74999
+  # Last-resort floor for pairs whose mean sub-score is exactly 0.0 — i.e.
+  # every single signal produced no score (fully missing data).  Under the
+  # current AND logic, failing pairs are scored as mean * 0.74999 which
+  # already maps proportionally to [0, 0.74999]; this replacement only fires
+  # when the mean itself is 0 (no signal whatsoever).  A small positive value
+  # keeps such pairs visible in manual-review queues rather than filtered out.
+  # Set to null or remove this key to keep raw 0.0 for all-null pairs.
+  zero_score_replacement: 0.01
 
 clustering:
   algorithm: clique

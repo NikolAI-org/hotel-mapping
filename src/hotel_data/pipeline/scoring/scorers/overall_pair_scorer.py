@@ -30,9 +30,14 @@ Compound rules are aggregated as:
   OR  → max(sub_scores)   — best contributing signal wins
   AND → mean(sub_scores) when all sub-scores ≥ 0.75 (all groups pass their
             threshold), so above-threshold quality is rewarded;
-        min(sub_scores)  when any sub-score < 0.75 (a required group failed
-            its threshold), so the weakest group gates the overall score
-            and drives it below 0.75.
+        mean_of_nonzero(sub_scores) × 0.74999  when any sub-score < 0.75
+            (a required group failed its threshold).  Zero sub-scores are
+            excluded from the mean so they act as a hard gate (pulling the
+            result into the failing window via the ×0.74999 multiplier) without
+            dragging down the mean contribution of the remaining strong groups.
+            A same-supplier pair (G6 veto → 0) with excellent name/geo signals
+            scores near 0.65 rather than collapsing to 0, making it clearly
+            visible at the top of the manual-review queue.
 
 Result is clamped to [0.0, 1.0] and cast to float.
 """
@@ -142,15 +147,34 @@ def _rule_to_expr(rule: dict) -> Column:
         # Best contributor wins
         return F.greatest(*sub_exprs).cast("float")
 
-    # AND — mean when all pass (rewards quality); min when any fail (gates result)
+    # AND — mean when all pass (rewards quality);
+    #       mean_of_nonzero × 0.74999 when any fail — zero sub-scores are
+    #       excluded from the mean so they act as a hard gate without dragging
+    #       down the contribution of strong groups.  The ×0.74999 multiplier
+    #       guarantees the pair never crosses the 0.75 merge threshold.
     else:
         n = len(sub_exprs)
         all_pass = reduce(
             lambda a, b: a & b,
             [e >= F.lit(0.75) for e in sub_exprs],
         )
-        mean_val = reduce(lambda a, b: a + b, sub_exprs) / F.lit(float(n))
-        return F.when(all_pass, mean_val).otherwise(F.least(*sub_exprs)).cast("float")
+        mean_all = reduce(lambda a, b: a + b, sub_exprs) / F.lit(float(n))
+        # Failing branch: mean over non-zero sub-scores only
+        nz_sum = reduce(
+            lambda a, b: a + b,
+            [F.when(e > F.lit(0.0), e).otherwise(F.lit(0.0)) for e in sub_exprs],
+        )
+        nz_count = reduce(
+            lambda a, b: a + b,
+            [
+                F.when(e > F.lit(0.0), F.lit(1.0)).otherwise(F.lit(0.0))
+                for e in sub_exprs
+            ],
+        )
+        mean_nz = nz_sum / F.when(nz_count > F.lit(0.0), nz_count).otherwise(F.lit(1.0))
+        return (
+            F.when(all_pass, mean_all).otherwise(mean_nz * F.lit(0.74999)).cast("float")
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

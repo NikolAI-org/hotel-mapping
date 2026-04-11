@@ -297,7 +297,7 @@ services:
     networks:
       - delta-lake-network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8080" ]
       interval: 30s
       timeout: 10s
       retries: 5

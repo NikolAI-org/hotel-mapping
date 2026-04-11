@@ -14,9 +14,10 @@ Notes:
 """
 
 from __future__ import annotations
+
 import os
-import sys
 import shutil
+import sys
 from typing import Tuple
 
 # --- User-editable parameters -------------------------------------------------
@@ -24,7 +25,7 @@ from typing import Tuple
 #  - S3: s3a://delta-lake/bronze/
 #  - Local: /tmp/delta/bronze/
 SOURCE_PATH = "s3a://delta-lake/bronze/"
-DEST_PATH = "s3a://delta-lake/bronze_uae_ean_hotelbeds/"
+DEST_PATH = "s3a://delta-lake/bronze_uae_ean_hotelbeds_new/"
 
 # If True: perform a dry-run (list and show what would be copied/deleted).
 DRY_RUN = True
@@ -175,7 +176,7 @@ def s3_delete_prefix(
                 batch.append({"Key": key})
                 if len(batch) >= 1000:
                     try:
-                        resp = s3.delete_objects(
+                        s3.delete_objects(
                             Bucket=bucket_src, Delete={"Objects": batch}
                         )
                         deleted += len(batch)
@@ -185,7 +186,7 @@ def s3_delete_prefix(
                         errors += 1
     if batch and not dry_run:
         try:
-            resp = s3.delete_objects(Bucket=bucket_src, Delete={"Objects": batch})
+            s3.delete_objects(Bucket=bucket_src, Delete={"Objects": batch})
             deleted += len(batch)
         except ClientError as ce:
             print(f"ERROR deleting final batch: {ce}")
