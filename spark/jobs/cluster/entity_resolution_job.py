@@ -1,6 +1,7 @@
 import json
 import os
 
+import yaml
 from pyspark.sql import SparkSession
 
 from hotel_data.config.paths import (
@@ -24,11 +25,20 @@ from spark.jobs.cluster.pair_scorer import PairScorer
 from spark.jobs.cluster.strategies import NonTransitiveStrategy, TransitiveStrategy
 
 
+def _load_config() -> dict:
+    """Load config.yaml relative to the hotel_data package root."""
+    import hotel_data
+    config_path = os.path.join(os.path.dirname(hotel_data.__file__), "config", "config.yaml")
+    with open(config_path) as fh:
+        return yaml.safe_load(fh)
+
+
 def main():
     spark = SparkSession.builder.appName("HotelEntityResolution").getOrCreate()
 
+    cfg = _load_config()
     current_provider = os.getenv("PROVIDER_NAME", "hbose")
-    transitivity = os.getenv("TRANSITIVITY", "true").lower() == "true"
+    transitivity = cfg["clustering"]["transitivity"]
 
     # --- DEFINE THE 3-TIER TABLES ---
     TABLE_REGISTRY_NAME = "canonical_registry"
@@ -37,50 +47,39 @@ def main():
 
     id_generator = CanonicalIdGenerator()
 
-    # 1. Extract the JSON configuration
-    match_logic_config = json.loads(os.getenv("MATCH_LOGIC", "{}"))
+    cluster_cfg = cfg["clustering"]
+
+    # All clustering params from config.yaml — single source of truth
+    match_logic_config = cfg["scoring"]["match_logic"]
     match_evaluator = MatchLogicEvaluator(match_logic_config)
-    required_providers = json.loads(os.getenv("REQUIRED_PROVIDERS", '["ean"]'))
+    required_providers = cluster_cfg["required_providers"]
 
-    # Veto rules to break the tie breaker
-    dynamic_veto_json = json.loads(os.getenv("DYNAMIC_VETO_RULES", "[]"))
+    # Veto rules
     veto_rules = []
-    for veto_cfg in dynamic_veto_json:
-        rule = DynamicVetoRule(
+    for veto_cfg in cluster_cfg.get("veto_rules", []):
+        veto_rules.append(DynamicVetoRule(
             rule_name=veto_cfg["veto_name"], logic_config=veto_cfg["logic"]
-        )
-        veto_rules.append(rule)
-
-    # Inject the dynamically compiled rules into the engine
+        ))
     veto_engine = VetoEngine(veto_rules)
-    # -----------------------------------------------------
 
     # --- STRATEGY FACTORY ---
     if transitivity:
-        print("🚀 MODE: Transitive (Graph / Union-Find)")
-        # def match_evaluator_func(pairs_df):
-        #     # Your YAML matching logic goes here
-        #     return pairs_df.withColumn("is_matched", F.lit(True))
-
+        print("MODE: Transitive (Graph / Union-Find)")
         strategy = TransitiveStrategy(spark, id_generator, match_evaluator.evaluate)
     else:
-        print("🎯 MODE: Non-Transitive (Hub-and-Spoke / 0-FP)")
-        config = {
-            "weights": json.loads(os.getenv("WEIGHTS", "{}")),
-            "t_high": float(os.getenv("THRESHOLD_HIGH", 0.85)),
-        }
-        scorer = PairScorer(config["weights"], config["t_high"], 0.80)
-        # veto_engine = VetoEngine([DualBrandVeto(), MissingGeoTiebreakerVeto()])
-        margin = float(os.getenv("CONFLICT_MARGIN", 0.05))
+        print("MODE: Non-Transitive (Hub-and-Spoke)")
+        scorer = PairScorer(
+            cluster_cfg["weights"],
+            cluster_cfg["threshold_high"],
+            cluster_cfg["threshold_low"],
+        )
         router = RoutingDecisionEngine(
-            match_threshold=config["t_high"], conflict_margin=margin
+            match_threshold=cluster_cfg["threshold_high"],
+            conflict_margin=cluster_cfg["conflict_margin"],
         )
         cohesion_validator = ClusterCohesionValidator(
             required_providers=required_providers
         )
-
-        # 2. Pass the evaluate method
-        # strategy = NonTransitiveStrategy(veto_engine, router, id_generator, scorer, match_evaluator.evaluate)
         strategy = NonTransitiveStrategy(
             veto_engine,
             router,

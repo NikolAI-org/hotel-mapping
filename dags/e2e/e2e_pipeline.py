@@ -1,4 +1,3 @@
-import json
 import os
 import select
 import subprocess
@@ -12,183 +11,17 @@ from airflow.operators.python import PythonOperator
 SUPPLIERS = [
     "ean",
     "bookingcom",
-    # "ratehawk",
-    # "grnconnect",
-    # "hobse",
+    "ratehawk",
+    "grnconnect",
+    "hobse",
 ]
 # SUPPLIERS = ["hobse", "grnconnect", "expedia" ]
 COUNTRY = "india"
 # COUNTRY = 'mumbai'
 
-# Keep clustering defaults aligned with cluster DAG behavior.
-CLUSTER_CONFIG = {
-    "weights": {
-        "name_score_jaccard": 0.1,
-        "normalized_name_score_jaccard": 0.1,
-        "name_score_lcs": 0.1,
-        "normalized_name_score_lcs": 0.1,
-        "name_score_levenshtein": 0.1,
-        "normalized_name_score_levenshtein": 0.1,
-        "name_score_sbert": 0.1,
-        "normalized_name_score_sbert": 0.1,
-        "address_line1_score": 0.1,
-        "address_sbert_score": 0.1,
-        "star_ratings_score": 0.0,
-        "postal_code_match": 0.0,
-        "phone_match_score": 0.0,
-        "email_match_score": 0.0,
-        "fax_match_score": 0.0,
-    },
-    "threshold_high": 0.85,
-    "threshold_low": 0.80,
-    "transitivity": True,
-    "conflict_margin": 0.05,
-    "required_providers": ["ean", "bookingcom"],
-}
-
-DEFAULT_MATCH_LOGIC = {
-    "operator": "AND",
-    "rules": [
-        {"signal": "geo_distance_km", "threshold": 0.5, "comparator": "lte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "name_score_jaccard", "threshold": 0.9, "comparator": "gte"},
-                {"signal": "name_score_lcs", "threshold": 0.9, "comparator": "gte"},
-                {
-                    "signal": "name_score_levenshtein",
-                    "threshold": 0.9,
-                    "comparator": "gte",
-                },
-                {"signal": "name_score_sbert", "threshold": 0.9, "comparator": "gte"},
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_jaccard",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_jaccard",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_lcs",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_lcs",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_levenshtein",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_levenshtein",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-                {
-                    "operator": "AND",
-                    "rules": [
-                        {
-                            "signal": "name_score_sbert",
-                            "threshold": 0.75,
-                            "comparator": "gte",
-                        },
-                        {
-                            "signal": "normalized_name_score_sbert",
-                            "threshold": 0.9,
-                            "comparator": "gte",
-                        },
-                    ],
-                },
-            ],
-        },
-        {
-            "operator": "OR",
-            "rules": [
-                {
-                    "signal": "address_line1_score",
-                    "threshold": 0.2,
-                    "comparator": "gte",
-                },
-                {
-                    "signal": "address_sbert_score",
-                    "threshold": 0.2,
-                    "comparator": "gte",
-                },
-            ],
-        },
-        {"signal": "star_ratings_score", "threshold": 0.0, "comparator": "gte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "postal_code_match", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "geo_distance_km", "threshold": 0.1, "comparator": "lte"},
-            ],
-        },
-        {"signal": "country_match", "threshold": 0.5, "comparator": "gte"},
-        {
-            "operator": "OR",
-            "rules": [
-                {"signal": "phone_match_score", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "email_match_score", "threshold": 0.5, "comparator": "gte"},
-                {"signal": "fax_match_score", "threshold": 0.5, "comparator": "gte"},
-            ],
-        },
-    ],
-}
-
-VETO_RULES_CONFIG = [
-    {
-        "veto_name": "VETO_DUAL_BRAND_TRAP",
-        "logic": {
-            "operator": "AND",
-            "rules": [
-                {"signal": "geo_distance_km", "comparator": "lt", "threshold": 0.05},
-                {
-                    "signal": "average_normalized_name_score",
-                    "comparator": "lt",
-                    "threshold": 0.4,
-                },
-            ],
-        },
-    },
-    {
-        "veto_name": "VETO_MISSING_GEO_TIEBREAKER",
-        "logic": {
-            "operator": "AND",
-            "rules": [
-                {
-                    "signal": "average_normalized_name_score",
-                    "comparator": "gt",
-                    "threshold": 0.9,
-                },
-                {"signal": "geo_distance_km", "comparator": "isnull"},
-                {"signal": "address_line1_score", "comparator": "isnull"},
-            ],
-        },
-    },
-]
+# All algorithm config (match_logic, clustering weights, thresholds, veto_rules)
+# lives in config.yaml and is read directly by the Spark jobs.
+# Only DAG-level orchestration params belong here.
 
 default_args = {
     "owner": "data-engineer",
@@ -225,13 +58,6 @@ def run_spark_job_direct(job_type, supplier, **kwargs):
         spark_env = dict(
             os.environ,
             PROVIDER_NAME=supplier,
-            WEIGHTS=json.dumps(CLUSTER_CONFIG["weights"]),
-            THRESHOLD_HIGH=str(CLUSTER_CONFIG["threshold_high"]),
-            THRESHOLD_LOW=str(CLUSTER_CONFIG["threshold_low"]),
-            TRANSITIVITY=json.dumps(CLUSTER_CONFIG["transitivity"]),
-            CONFLICT_MARGIN=str(CLUSTER_CONFIG["conflict_margin"]),
-            REQUIRED_PROVIDERS=json.dumps(CLUSTER_CONFIG["required_providers"]),
-            DYNAMIC_VETO_RULES=json.dumps(VETO_RULES_CONFIG),
         )
     else:
         raise ValueError(f"Unsupported job_type: {job_type}")

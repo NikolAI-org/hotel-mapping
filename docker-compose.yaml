@@ -380,12 +380,13 @@ services:
     volumes:
       # Save notebooks to your local machine so you don't lose them
       - ${AIRFLOW_PROJ_DIR:-.}/spark/jobs:/opt/spark-jobs
+      - ${AIRFLOW_PROJ_DIR:-.}/notebooks:/opt/notebooks
       - ${AIRFLOW_PROJ_DIR:-.}/src/hotel_data:/opt/airflow/hotel_data
     networks:
       - delta-lake-network
     # Starts Jupyter Lab without a password for easy local access
     command: >
-      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --notebook-dir=/opt/spark-jobs
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --notebook-dir=/opt
 
 volumes:
   postgres-db-volume:

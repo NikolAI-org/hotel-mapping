@@ -24,11 +24,14 @@ class EntityResolutionPipeline:
             new_pairs_df = None
 
         # existing_state_df = manager.read_table(table_registry) if manager._table_exists(table_registry) else None
-        
+
         existing_registry_df = manager.read_table(table_registry) if manager._table_exists(table_registry) else None
         existing_mappings_df = manager.read_table(table_mappings) if manager._table_exists(table_mappings) else None
         # --- EXECUTE STRATEGY ---
         if has_pairs:
+            # Pairs are stored anchor=_i, challenger=_j. Ensure current_provider is always uid_i
+            # so RoutingDecisionEngine partitions by the right hotel.
+            new_pairs_df = self._normalize_pair_orientation(new_pairs_df, current_provider)
             # result = self.strategy.cluster(new_hotels_df, new_pairs_df, existing_registry_df)
             result = self.strategy.cluster(new_hotels_df, new_pairs_df, existing_registry_df, existing_mappings_df)
         else:
@@ -110,6 +113,43 @@ class EntityResolutionPipeline:
             manager.create_table(table_mappings, df=valid_mappings)
         else:
             manager.merge_table(table_name=table_mappings, df=valid_mappings, key_columns=["uid"])
+
+    # --- PAIR ORIENTATION NORMALIZER ---
+    @staticmethod
+    def _normalize_pair_orientation(pairs_df: DataFrame, current_provider: str) -> DataFrame:
+        """Flip *_i/*_j column pairs so current_provider's hotel is always uid_i.
+
+        Pairs are written by the scoring job with anchor→_i and challenger→_j.
+        When the current provider was the challenger its hotels sit on the _j side,
+        causing RoutingDecisionEngine (which partitions by uid_i) to route the wrong
+        supplier.  Any pair where providerName_j == current_provider is flipped here.
+        """
+        needs_flip = F.col("providerName_j") == current_provider
+
+        cols = pairs_df.columns
+        j_set = set(c for c in cols if c.endswith("_j"))
+        paired_bases = set(c[:-2] for c in cols if c.endswith("_i") and c[:-2] + "_j" in j_set)
+
+        select_exprs = []
+        handled = set()
+        for col_name in cols:
+            if col_name in handled:
+                continue
+            if col_name.endswith("_i") and col_name[:-2] in paired_bases:
+                j_col = col_name[:-2] + "_j"
+                select_exprs.append(
+                    F.when(needs_flip, F.col(j_col)).otherwise(F.col(col_name)).alias(col_name)
+                )
+                select_exprs.append(
+                    F.when(needs_flip, F.col(col_name)).otherwise(F.col(j_col)).alias(j_col)
+                )
+                handled.add(col_name)
+                handled.add(j_col)
+            elif col_name not in handled:
+                select_exprs.append(F.col(col_name))
+                handled.add(col_name)
+
+        return pairs_df.select(select_exprs)
 
     # --- TIER 3: Canonical Registry (The Hubs - Upsert) ---
     def _write_canonical_registry(self, manager, table_registry, singletons_df: DataFrame):

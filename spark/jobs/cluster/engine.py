@@ -156,13 +156,14 @@ class RoutingDecisionEngine:
 
         top_candidates = df_with_diff.filter(F.col("rank") == 1)
 
-        # FIX: Inject the boolean 'is_matched' as the primary gatekeeper
+        # Routing is driven solely by the boolean match_logic result (is_matched).
+        # composite_score is not used as a gate — overall_pair_score will replace
+        # it as a confidence signal once the review queue is wired up.
         return top_candidates.withColumn(
             "routing_decision",
-            F.when(F.col("is_matched") == False, "FAILED_BOOLEAN_LOGIC")  # <-- STRICT RULE OVERRIDE
+            F.when(F.col("is_matched") == False, "FAILED_BOOLEAN_LOGIC")
              .when(F.col("is_vetoed"), "CONFLICT_VETOED")
-             .when((F.col("composite_score") >= self.match_threshold) & (F.col("score_diff") < self.conflict_margin), "CONFLICT_AMBIGUOUS")
-             .when(F.col("composite_score") >= self.match_threshold, "ATTACH_TO_CANONICAL")
+             .when(F.col("is_matched") == True, "ATTACH_TO_CANONICAL")
              .otherwise("CREATE_NEW_SINGLETON")
         )
 

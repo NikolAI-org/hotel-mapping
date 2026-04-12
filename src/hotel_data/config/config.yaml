@@ -173,9 +173,33 @@ scoring:
   zero_score_replacement: 0.01
 
 clustering:
-  algorithm: clique
-  # Options could be labelpropagation, unionfind, clique
-  transitivity: True
+  transitivity: False
+  threshold_high: 0.85
+  threshold_low: 0.80
+  conflict_margin: 0.05
+  required_providers:
+    - ean
+    - bookingcom
+  # Weights used by PairScorer to compute composite_score (kept for reference;
+  # routing currently uses is_matched from match_logic, not composite_score).
+  weights:
+    name_score_jaccard: 0.1
+    normalized_name_score_jaccard: 0.1
+    name_score_lcs: 0.1
+    normalized_name_score_lcs: 0.1
+    name_score_levenshtein: 0.1
+    normalized_name_score_levenshtein: 0.1
+    name_score_sbert: 0.1
+    normalized_name_score_sbert: 0.1
+    address_line1_score: 0.1
+    address_sbert_score: 0.1
+    star_ratings_score: 0.0
+    postal_code_match: 0.0
+    phone_match_score: 0.0
+    email_match_score: 0.0
+    fax_match_score: 0.0
+  # Veto rules — disabled; re-enable once reviewed against real data.
+  veto_rules: []
 
 streaming:
   enabled: false
